@@ -80,3 +80,30 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
   .stats article { padding: 15px; }
   .stats strong { font-size: 23px; }
 }
+
+
+.postureRow { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:16px 0 12px; padding:12px 13px; border:1px solid var(--line); background:var(--panel-2); border-radius:11px; font-size:12px; }
+.postureRow > span { color:var(--muted); }
+.posture { text-transform:capitalize; }
+.posture.healthy { color:var(--good); }
+.posture.warning { color:var(--warn); }
+.posture.critical { color:var(--danger); }
+.posture.unknown { color:var(--muted); }
+
+.healthGrid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:10px; }
+.healthGrid > div { display:flex; justify-content:space-between; gap:8px; padding:9px 10px; background:#0d1118; border:1px solid var(--line); border-radius:9px; font-size:11px; }
+.healthGrid span:first-child { color:var(--muted); }
+.health { font-weight:750; }
+.health.good { color:var(--good); }
+.health.bad { color:var(--danger); }
+.health.unknown { color:var(--muted); }
+
+.remoteTools { margin-top:15px; padding:11px 12px; border-radius:10px; font-size:11px; }
+.remoteTools strong { display:block; }
+.remoteTools p { margin:5px 0 0; overflow-wrap:anywhere; }
+.safeBox { border:1px solid rgba(56,217,150,.25); background:rgba(56,217,150,.06); color:#a7e8ce; }
+.dangerBox { border:1px solid rgba(255,100,109,.35); background:rgba(255,100,109,.08); color:#ffb5ba; }
+
+.noticeBox { border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:16px 18px; }
+.noticeBox strong { font-size:13px; }
+.noticeBox p { margin:5px 0 0; color:var(--muted); font-size:12px; line-height:1.5; }
