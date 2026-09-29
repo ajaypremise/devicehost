@@ -4,7 +4,6 @@ const DEVICE_API_PREFIXES = [
   "/api/enroll",
   "/api/heartbeat",
   "/api/events",
-  "/api/device-actions",
 ];
 
 export function proxy(request) {
