@@ -1,0 +1,12 @@
+services:
+  meshcentral:
+    image: ghcr.io/ylianst/meshcentral:1.2.6
+    container_name: windowsprotect-meshcentral
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./data:/opt/meshcentral/meshcentral-data
+      - ./files:/opt/meshcentral/meshcentral-files
+      - ./backups:/opt/meshcentral/meshcentral-backups
