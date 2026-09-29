@@ -60,7 +60,7 @@ export default async function Home() {
         <div>
           <div className="eyebrow">WINDOWSPROTECT</div>
           <h1>DeviceHost</h1>
-          <p>Family PC protection, security health and remote-support visibility.</p>
+          <p>Family PC protection, security health and managed remote-support visibility.</p>
         </div>
         <div className="liveBadge"><span className="dot" />Live dashboard</div>
       </header>
@@ -109,14 +109,23 @@ export default async function Home() {
                     <div><span>Defender</span>{health(device.defender_enabled)}</div>
                     <div><span>Firewall</span>{health(device.firewall_enabled)}</div>
                     <div><span>SmartScreen</span>{health(device.smartscreen_enabled)}</div>
-                    <div><span>RustDesk service</span>{health(device.rustdesk_service_running)}</div>
+                    <div><span>Remote support</span>{health(
+                      device.remote_access_provider === "meshcentral"
+                        ? device.meshcentral_connected
+                        : device.rustdesk_service_running
+                    )}</div>
                   </div>
 
                   <dl>
                     <div><dt>Device ID</dt><dd>{device.device_code}</dd></div>
-                    <div><dt>RustDesk ID</dt><dd>{device.rustdesk_id || "Pending"}</dd></div>
-                    <div><dt>RustDesk version</dt><dd>{device.rustdesk_version || "—"}</dd></div>
-                    <div><dt>Temporary support</dt><dd>{device.temporary_support_enabled ? "ENABLED" : "Off"}</dd></div>
+                    <div><dt>Remote access</dt><dd>{device.remote_access_provider === "meshcentral" ? "MeshCentral" : (device.remote_access_provider || "Pending")}</dd></div>
+                    <div><dt>MeshCentral node</dt><dd>{device.meshcentral_node_id || "Pending"}</dd></div>
+                    <div><dt>MeshCentral agent</dt><dd>{device.meshcentral_agent_version || "—"}</dd></div>
+                    <div><dt>Temporary support</dt><dd>{
+                      device.temporary_support_expires_at
+                        ? `Until ${new Date(device.temporary_support_expires_at).toLocaleString()}`
+                        : "Off"
+                    }</dd></div>
                     <div><dt>Migration</dt><dd>{device.migration_status || "not_started"}</dd></div>
                     <div><dt>Windows</dt><dd>{device.os_version || "—"}</dd></div>
                     <div><dt>Agent</dt><dd>{device.agent_version || "—"}</dd></div>
@@ -160,8 +169,8 @@ export default async function Home() {
 
       <section className="section">
         <div className="noticeBox">
-          <strong>Remote actions intentionally disabled</strong>
-          <p>DeviceHost is currently monitoring-only. Remote execution controls stay disabled until the Windows agent implementation has been separately reviewed and tested.</p>
+          <strong>Remote support is separated from DeviceHost</strong>
+          <p>DeviceHost monitors WindowsProtect security health. Interactive remote control is handled by the separately authenticated MeshCentral server; DeviceHost does not expose a remote shell.</p>
         </div>
       </section>
     </main>
