@@ -1,10 +1,24 @@
 import { NextResponse } from "next/server";
 
+const DEVICE_API_PREFIXES = [
+  "/api/enroll",
+  "/api/heartbeat",
+  "/api/events",
+  "/api/credentials",
+];
+
 export function proxy(request) {
+  const pathname = request.nextUrl.pathname;
+
+  // Device endpoints authenticate themselves with enrollment/device tokens.
+  if (DEVICE_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+
   const expectedUser = process.env.DASHBOARD_USER;
   const expectedPassword = process.env.DASHBOARD_PASSWORD;
 
-  // Fail closed: never expose device data until dashboard credentials exist.
+  // Fail closed: never expose dashboard/admin data until credentials exist.
   if (!expectedUser || !expectedPassword) {
     return new NextResponse(
       "DeviceHost dashboard is locked. Configure DASHBOARD_USER and DASHBOARD_PASSWORD in Vercel.",
