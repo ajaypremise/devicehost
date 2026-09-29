@@ -21,15 +21,23 @@ jobs:
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
           & $csc /nologo /target:exe /out:DeviceSupportHost.exe /reference:System.ServiceProcess.dll /reference:System.Security.dll windows-agent\DeviceSupportHost.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Hash binary
+      - name: Compile enrollment test app
         shell: powershell
         run: |
-          Get-FileHash DeviceSupportHost.exe -Algorithm SHA256 | Format-List | Out-File SHA256.txt
+          $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          & $csc /nologo /target:exe /out:WindowsProtect_Test.exe /reference:System.Security.dll windows-agent\WindowsProtect_Test.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Hash binaries
+        shell: powershell
+        run: |
+          Get-FileHash WindowsProtect_Test.exe -Algorithm SHA256 | Format-List | Out-File SHA256.txt
+          Get-FileHash DeviceSupportHost.exe -Algorithm SHA256 | Format-List | Out-File -Append SHA256.txt
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
           name: WindowsProtect-v0.3-monitoring-test
           path: |
+            WindowsProtect_Test.exe
             DeviceSupportHost.exe
             SHA256.txt
           retention-days: 14
