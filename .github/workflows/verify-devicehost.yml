@@ -1,0 +1,32 @@
+name: Verify DeviceHost
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "app/**"
+      - "proxy.js"
+      - "package.json"
+      - ".github/workflows/verify-devicehost.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SECRET_KEY: test-secret
+          DASHBOARD_USER: test
+          DASHBOARD_PASSWORD: test
+          DEVICE_ENROLLMENT_KEY: test
+        run: npm run build
