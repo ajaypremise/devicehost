@@ -1,0 +1,52 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Ylianst/MeshCentral/master/meshcentral-config-schema.json",
+  "settings": {
+    "cert": "MESH_HOSTNAME",
+    "WANonly": true,
+    "port": 443,
+    "redirPort": 80,
+    "sessionSameSite": "strict",
+    "agentPing": 30,
+    "agentPong": 30,
+    "autoBackup": {
+      "backupIntervalHours": 24,
+      "keepLastDaysBackup": 14,
+      "backupPath": "/opt/meshcentral/meshcentral-backups"
+    }
+  },
+  "domains": {
+    "": {
+      "title": "WindowsProtect Remote Support",
+      "title2": "Private family support",
+      "newAccounts": false,
+      "guestDeviceSharing": true,
+      "agentSelfGuestSharing": {
+        "expire": 120
+      },
+      "allowSavingDeviceCredentials": false,
+      "passwordRequirements": {
+        "min": 14,
+        "upper": 1,
+        "lower": 1,
+        "numeric": 1,
+        "nonalpha": 1,
+        "force2factor": true,
+        "oldPasswordBan": 5
+      },
+      "myServer": {
+        "Backup": true,
+        "Restore": false,
+        "Upgrade": false,
+        "ErrorLog": true,
+        "Console": false,
+        "Trace": false,
+        "Config": false
+      }
+    }
+  },
+  "letsencrypt": {
+    "email": "LETSENCRYPT_EMAIL",
+    "names": "MESH_HOSTNAME",
+    "production": true
+  }
+}
