@@ -44,7 +44,10 @@ export async function POST(request) {
 
     for (const field of [
       "computer_name","rustdesk_id","rustdesk_running","protection_status",
-      "migration_status","os_version","agent_version"
+      "migration_status","os_version","agent_version",
+      "defender_enabled","firewall_enabled","smartscreen_enabled",
+      "rustdesk_version","rustdesk_service_running","temporary_support_enabled",
+      "uptime_seconds","installed_apps_count","remote_tools_detected","security_posture"
     ]) {
       if (body[field] !== undefined) patch[field] = body[field];
     }
