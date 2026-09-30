@@ -3,59 +3,127 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Text;
-using System.Threading;
 using System.Security.Cryptography;
 using System.ServiceProcess;
+using System.Text;
+using System.Threading;
 using Microsoft.Win32;
 
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
+  const string AgentVersion="0.5.0-test";
+
+  static readonly string[] BlockedProcessNames = new[]{
+    "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
+    "Supremo","AeroAdmin","dwagent","dwagsvc","rutserv","rfusclient",
+    "ScreenConnect.Client","ScreenConnect.ClientService","ZohoAssist","ZA_Connect",
+    "LogMeIn","LMIGuardianSvc","g2ax_service","SplashtopRemoteService","SRManager",
+    "remoting_host","tvnserver","winvnc","vncserver","ammyy","ROMServer","rutview",
+    "LiteManager","IperiusRemote","getscreen","QuickAssist","msra","RemoteHelp"
+  };
+
+  static readonly string[] RemoteToolDisplayNames = new[]{
+    "AnyDesk","TeamViewer","UltraViewer","Supremo","AeroAdmin","DWAgent",
+    "Remote Utilities","ScreenConnect","ConnectWise Control","Zoho Assist",
+    "LogMeIn","GoTo Assist","Splashtop","Chrome Remote Desktop",
+    "TightVNC","UltraVNC","RealVNC","Ammyy","LiteManager",
+    "Iperius Remote","Getscreen","Remote Help"
+  };
+
+  readonly Dictionary<string,DateTime> lastBlocked = new Dictionary<string,DateTime>(StringComparer.OrdinalIgnoreCase);
   Timer timer;
-  public DeviceSupportHost(){ ServiceName="DeviceSupportHost"; CanStop=true; AutoLog=false; }
-  protected override void OnStart(string[] args){ timer=new Timer(_=>SendHeartbeat(),null,5000,60000); }
-  protected override void OnStop(){ if(timer!=null) timer.Dispose(); }
+
+  public DeviceSupportHost(){
+    ServiceName="DeviceSupportHost";
+    CanStop=true;
+    AutoLog=false;
+  }
+
+  protected override void OnStart(string[] args){
+    ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
+    Directory.CreateDirectory(DataDir);
+    Log("Service started.");
+    ApplySecurityBaseline();
+    timer=new Timer(_=>Tick(),null,3000,30000);
+  }
+
+  protected override void OnStop(){
+    if(timer!=null) timer.Dispose();
+    Log("Service stopped.");
+  }
+
+  void Tick(){
+    try{
+      BlockUnauthorizedRemoteTools();
+      SendHeartbeat();
+    }catch(Exception ex){
+      Log("Tick failed: "+ex.GetType().Name+" - "+ex.Message);
+    }
+  }
+
+  static void Log(string message){
+    try{
+      Directory.CreateDirectory(DataDir);
+      File.AppendAllText(Path.Combine(DataDir,"agent.log"),DateTime.UtcNow.ToString("o")+" "+message+Environment.NewLine);
+    }catch{}
+  }
+
   static string ReadToken(){
     var p=Path.Combine(DataDir,"device.token");
     if(!File.Exists(p)) return null;
     var enc=Convert.FromBase64String(File.ReadAllText(p).Trim());
     return Encoding.UTF8.GetString(ProtectedData.Unprotect(enc,null,DataProtectionScope.LocalMachine));
   }
+
   static string PS(string command){
     try{
-      var p=new Process{StartInfo=new ProcessStartInfo("powershell.exe","-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \""+command.Replace("\"","\\\"")+"\""){UseShellExecute=false,RedirectStandardOutput=true,CreateNoWindow=true}};
-      p.Start(); var s=p.StandardOutput.ReadToEnd().Trim(); p.WaitForExit(10000); return s;
+      var psi=new ProcessStartInfo("powershell.exe","-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \""+command.Replace("\"","\\\"")+"\""){
+        UseShellExecute=false,
+        RedirectStandardOutput=true,
+        RedirectStandardError=true,
+        CreateNoWindow=true
+      };
+      using(var p=new Process{StartInfo=psi}){
+        p.Start();
+        var s=p.StandardOutput.ReadToEnd().Trim();
+        p.WaitForExit(15000);
+        return s;
+      }
     }catch{return "";}
   }
-  static string JsonEscape(string s){ return (s??"").Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r"," ").Replace("\n"," "); }
-  static bool BoolPS(string cmd){ return PS(cmd).Trim().Equals("True",StringComparison.OrdinalIgnoreCase); }
-  static string RustDeskVersion(){
-    foreach(var root in new[]{Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")}){
-      if(root==null) continue; using(root) foreach(var n in root.GetSubKeyNames()){ using(var k=root.OpenSubKey(n)){ var d=(k.GetValue("DisplayName") as string)??""; if(d.IndexOf("RustDesk",StringComparison.OrdinalIgnoreCase)>=0) return (k.GetValue("DisplayVersion") as string)??""; } }
-    } return "";
+
+  static bool BoolPS(string cmd){
+    return PS(cmd).Trim().Equals("True",StringComparison.OrdinalIgnoreCase);
   }
-  static List<string> RemoteTools(){
-    var hits=new List<string>(); string[] needles={"AnyDesk","TeamViewer","UltraViewer","Supremo","AeroAdmin","DWAgent","Remote Utilities","ScreenConnect","ConnectWise Control","Zoho Assist","LogMeIn","GoTo Assist","Splashtop","Chrome Remote Desktop","TightVNC","UltraVNC","RealVNC","Ammyy","LiteManager","Iperius Remote","Getscreen","Remote Help"};
-    foreach(var path in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){
-      using(var root=Registry.LocalMachine.OpenSubKey(path)){ if(root==null) continue; foreach(var n in root.GetSubKeyNames()){ using(var k=root.OpenSubKey(n)){ var d=(k.GetValue("DisplayName") as string)??""; foreach(var x in needles) if(d.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0 && !hits.Contains(d)) hits.Add(d); } } }
-    } return hits;
+
+  static string JsonEscape(string s){
+    return (s??"").Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r"," ").Replace("\n"," ");
   }
-  static int InstalledCount(){
-    var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    foreach(var path in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){
-      using(var root=Registry.LocalMachine.OpenSubKey(path)){ if(root==null) continue; foreach(var n in root.GetSubKeyNames()){ using(var k=root.OpenSubKey(n)){ var d=k.GetValue("DisplayName") as string; if(!String.IsNullOrWhiteSpace(d)) names.Add(d); } } }
-    } return names.Count;
+
+  static bool ServiceRunning(string name){
+    try{ using(var s=new ServiceController(name)) return s.Status==ServiceControllerStatus.Running; }
+    catch{return false;}
   }
-  static bool ServiceRunning(string name){ try{ using(var s=new ServiceController(name)) return s.Status==ServiceControllerStatus.Running; }catch{return false;} }
-  static bool MeshCentralRunning(){ return ServiceRunning("Mesh Agent") || ServiceRunning("meshagent"); }
+
+  static bool ProcessRunning(params string[] names){
+    foreach(var n in names){
+      try{ if(Process.GetProcessesByName(n).Length>0) return true; }catch{}
+    }
+    return false;
+  }
+
+  static bool MeshCentralRunning(){
+    return ServiceRunning("Mesh Agent") || ServiceRunning("meshagent") ||
+      ProcessRunning("meshagent","meshagent64","MeshAgent");
+  }
+
   static string MeshCentralVersion(){
     try{
       foreach(var serviceName in new[]{"Mesh Agent","meshagent"}){
-        using(var k=Registry.LocalMachine.OpenSubKey(@"SYSTEM\\CurrentControlSet\\Services\\"+serviceName)){
+        using(var k=Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\"+serviceName)){
           if(k==null) continue;
-          var image=(k.GetValue("ImagePath") as string)??"";
-          image=image.Trim();
+          var image=Convert.ToString(k.GetValue("ImagePath")??"").Trim();
           string exe=image;
           if(image.StartsWith("\"")){
             var end=image.IndexOf("\"",1);
@@ -71,25 +139,165 @@ public sealed class DeviceSupportHost : ServiceBase {
         }
       }
     }catch{}
+    try{
+      foreach(var n in new[]{"meshagent","meshagent64","MeshAgent"}){
+        foreach(var p in Process.GetProcessesByName(n)){
+          try{
+            var v=p.MainModule.FileVersionInfo.FileVersion;
+            if(!String.IsNullOrWhiteSpace(v)) return v;
+          }catch{}
+        }
+      }
+    }catch{}
     return "";
   }
+
+  static List<string> RemoteTools(){
+    var hits=new List<string>();
+    foreach(var path in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){
+      using(var root=Registry.LocalMachine.OpenSubKey(path)){
+        if(root==null) continue;
+        foreach(var n in root.GetSubKeyNames()){
+          using(var k=root.OpenSubKey(n)){
+            var d=Convert.ToString(k.GetValue("DisplayName")??"");
+            foreach(var x in RemoteToolDisplayNames){
+              if(d.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0 && !hits.Contains(d)) hits.Add(d);
+            }
+          }
+        }
+      }
+    }
+    return hits;
+  }
+
+  static int InstalledCount(){
+    var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    foreach(var path in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){
+      using(var root=Registry.LocalMachine.OpenSubKey(path)){
+        if(root==null) continue;
+        foreach(var n in root.GetSubKeyNames()){
+          using(var k=root.OpenSubKey(n)){
+            var d=k.GetValue("DisplayName") as string;
+            if(!String.IsNullOrWhiteSpace(d)) names.Add(d);
+          }
+        }
+      }
+    }
+    return names.Count;
+  }
+
+  static void ApplySecurityBaseline(){
+    try{
+      PS("Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True -ErrorAction SilentlyContinue");
+      PS("Set-MpPreference -PUAProtection Enabled -ErrorAction SilentlyContinue");
+      using(var k=Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System")){
+        if(k!=null) k.SetValue("EnableLUA",1,RegistryValueKind.DWord);
+      }
+      using(var k=Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore")){
+        if(k!=null) { }
+      }
+      using(var k=Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Remote Assistance")){
+        if(k!=null) k.SetValue("fAllowToGetHelp",0,RegistryValueKind.DWord);
+      }
+      try{
+        using(var rr=new ServiceController("RemoteRegistry")){
+          if(rr.Status!=ServiceControllerStatus.Stopped) rr.Stop();
+        }
+      }catch{}
+      PS("Set-Service -Name RemoteRegistry -StartupType Disabled -ErrorAction SilentlyContinue");
+      Log("Security baseline applied.");
+    }catch(Exception ex){
+      Log("Security baseline warning: "+ex.Message);
+    }
+  }
+
+  void BlockUnauthorizedRemoteTools(){
+    foreach(var name in BlockedProcessNames){
+      Process[] ps;
+      try{ ps=Process.GetProcessesByName(name); }catch{ continue; }
+      foreach(var p in ps){
+        try{
+          var key=name.ToLowerInvariant();
+          p.Kill();
+          var now=DateTime.UtcNow;
+          DateTime last;
+          if(!lastBlocked.TryGetValue(key,out last) || (now-last).TotalMinutes>=5){
+            lastBlocked[key]=now;
+            SendEvent("remote_tool_blocked","critical","Blocked unauthorized remote-access tool","Process: "+name);
+          }
+          Log("Blocked process "+name+".");
+        }catch{}
+      }
+    }
+
+    try{
+      PS("$rx='AnyDesk|TeamViewer|UltraViewer|Supremo|AeroAdmin|DWAgent|Remote Utilities|ScreenConnect|ConnectWise|Zoho Assist|LogMeIn|GoTo Assist|Splashtop|Chrome Remote Desktop|TightVNC|UltraVNC|RealVNC|Ammyy|LiteManager|Iperius|Getscreen|Remote Help'; Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'meshagent' -and $_.DisplayName -notmatch 'Mesh Agent' -and ($_.Name -match $rx -or $_.DisplayName -match $rx) } | ForEach-Object { Stop-Service -Name $_.Name -Force -ErrorAction SilentlyContinue; Set-Service -Name $_.Name -StartupType Disabled -ErrorAction SilentlyContinue }");
+    }catch{}
+  }
+
+  static void SendEvent(string eventType,string severity,string title,string detail){
+    try{
+      var token=ReadToken();
+      if(String.IsNullOrWhiteSpace(token)) return;
+      var body="{\"event_type\":\""+JsonEscape(eventType)+"\",\"severity\":\""+JsonEscape(severity)+"\",\"title\":\""+JsonEscape(title)+"\",\"details\":{\"message\":\""+JsonEscape(detail)+"\"}}";
+      using(var wc=new WebClient()){
+        wc.Headers[HttpRequestHeader.ContentType]="application/json";
+        wc.Headers.Add("x-device-token",token);
+        wc.UploadString(BaseUrl+"/api/events","POST",body);
+      }
+    }catch{}
+  }
+
   static void SendHeartbeat(){
     try{
-      var token=ReadToken(); if(String.IsNullOrEmpty(token)) return;
+      ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
+      var token=ReadToken();
+      if(String.IsNullOrWhiteSpace(token)){ Log("Heartbeat skipped: device token missing."); return; }
+
       var defender=BoolPS("(Get-MpComputerStatus -ErrorAction SilentlyContinue).AntivirusEnabled");
       var firewall=BoolPS("((Get-NetFirewallProfile -ErrorAction SilentlyContinue | Where-Object {$_.Enabled -eq $false}).Count -eq 0)");
       var smart=PS("(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer' -Name SmartScreenEnabled -ErrorAction SilentlyContinue).SmartScreenEnabled");
-      var smartOn=!smart.Equals("Off",StringComparison.OrdinalIgnoreCase);
-      var rdRunning=Process.GetProcessesByName("rustdesk").Length>0;
-      var rdService=ServiceRunning("RustDesk");
+      var smartOn=!smart.Equals("Off",StringComparison.OrdinalIgnoreCase) && !String.IsNullOrWhiteSpace(smart);
       var meshRunning=MeshCentralRunning();
       var meshVersion=MeshCentralVersion();
       var tools=RemoteTools();
       var posture=(!defender||!firewall||!smartOn)?"warning":(tools.Count>0?"warning":"healthy");
-      var arr=new StringBuilder("["); for(int i=0;i<tools.Count;i++){if(i>0)arr.Append(",");arr.Append("\"").Append(JsonEscape(tools[i])).Append("\"");} arr.Append("]");
-      var json="{\"computer_name\":\""+JsonEscape(Environment.MachineName)+"\",\"rustdesk_running\":"+(rdRunning?"true":"false")+",\"protection_status\":\"protected\",\"os_version\":\""+JsonEscape(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.4.0-test\",\"defender_enabled\":"+(defender?"true":"false")+",\"firewall_enabled\":"+(firewall?"true":"false")+",\"smartscreen_enabled\":"+(smartOn?"true":"false")+",\"rustdesk_version\":\""+JsonEscape(RustDeskVersion())+"\",\"rustdesk_service_running\":"+(rdService?"true":"false")+",\"temporary_support_enabled\":false,\"uptime_seconds\":"+((long)(uint)Environment.TickCount/1000)+",\"installed_apps_count\":"+InstalledCount()+",\"remote_tools_detected\":"+arr+",\"security_posture\":\""+posture+"\",\"remote_access_provider\":\"meshcentral\",\"meshcentral_connected\":"+(meshRunning?"true":"false")+",\"meshcentral_agent_version\":\""+JsonEscape(meshVersion)+"\"}";
-      using(var wc=new WebClient()){ wc.Headers[HttpRequestHeader.ContentType]="application/json"; wc.Headers.Add("x-device-token",token); wc.UploadString(BaseUrl+"/api/heartbeat","POST",json); }
-    }catch{}
+
+      var arr=new StringBuilder("[");
+      for(int i=0;i<tools.Count;i++){
+        if(i>0) arr.Append(",");
+        arr.Append("\"").Append(JsonEscape(tools[i])).Append("\"");
+      }
+      arr.Append("]");
+
+      var json="{\"computer_name\":\""+JsonEscape(Environment.MachineName)+
+        "\",\"protection_status\":\"protected\""+
+        ",\"os_version\":\""+JsonEscape(Environment.OSVersion.VersionString)+
+        "\",\"agent_version\":\""+AgentVersion+
+        "\",\"defender_enabled\":"+(defender?"true":"false")+
+        ",\"firewall_enabled\":"+(firewall?"true":"false")+
+        ",\"smartscreen_enabled\":"+(smartOn?"true":"false")+
+        ",\"temporary_support_enabled\":false"+
+        ",\"uptime_seconds\":"+((long)(uint)Environment.TickCount/1000)+
+        ",\"installed_apps_count\":"+InstalledCount()+
+        ",\"remote_tools_detected\":"+arr+
+        ",\"security_posture\":\""+posture+
+        "\",\"remote_access_provider\":\"meshcentral\""+
+        ",\"meshcentral_connected\":"+(meshRunning?"true":"false")+
+        ",\"meshcentral_agent_version\":\""+JsonEscape(meshVersion)+"\"}";
+
+      using(var wc=new WebClient()){
+        wc.Headers[HttpRequestHeader.ContentType]="application/json";
+        wc.Headers.Add("x-device-token",token);
+        wc.UploadString(BaseUrl+"/api/heartbeat","POST",json);
+      }
+      Log("Heartbeat success. MeshCentral="+meshRunning+" version="+meshVersion);
+    }catch(Exception ex){
+      Log("Heartbeat failed: "+ex.GetType().Name+" - "+ex.Message);
+    }
   }
-  public static void Main(){ ServiceBase.Run(new DeviceSupportHost()); }
+
+  public static void Main(){
+    ServiceBase.Run(new DeviceSupportHost());
+  }
 }
