@@ -53,7 +53,7 @@ export async function POST(request, { params }) {
         "if(-not $sid){throw 'No active Windows session'}; " +
         "$user=(($sid -replace '^>','').Trim() -split '\\s+')[0]; " +
         "$task='WindowsProtectOpenUrl'; " +
-        "$cmd='cmd.exe'; $args='/c start "" "' + $u + '"'; " +
+        "$cmd='cmd.exe'; $args='/c start \"\" \"' + $u + '\"'; " +
         "schtasks /Create /TN $task /TR ('"' + $cmd + '" ' + $args) /SC ONCE /ST 00:00 /RU $user /IT /F | Out-Null; " +
         "schtasks /Run /TN $task | Out-Null; Start-Sleep -Milliseconds 800; schtasks /Delete /TN $task /F | Out-Null; 'OK'";
 
