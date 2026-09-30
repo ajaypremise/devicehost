@@ -6,7 +6,6 @@ async function supabaseGet(resource) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) throw new Error("Supabase environment variables are missing.");
-
   const response = await fetch(`${url}/rest/v1/${resource}`, {
     headers: { apikey: key, Accept: "application/json" },
     cache: "no-store",
@@ -38,11 +37,23 @@ function postureLabel(value) {
   return value && value !== "unknown" ? value : "Awaiting telemetry";
 }
 
+function attentionRank(device) {
+  if (device.security_posture === "critical") return 4;
+  if (Array.isArray(device.remote_tools_detected) && device.remote_tools_detected.length > 0) return 3;
+  if (device.security_posture === "warning") return 2;
+  if (!isOnline(device.last_seen_at)) return 1;
+  return 0;
+}
+
 export default async function Home({ searchParams }) {
   const params = (await searchParams) || {};
   const q = String(params.q || "").trim();
+  const status = ["online","offline"].includes(String(params.status)) ? String(params.status) : "all";
+  const posture = ["healthy","attention"].includes(String(params.posture)) ? String(params.posture) : "all";
+  const remote = ["on","off"].includes(String(params.remote)) ? String(params.remote) : "all";
+  const sort = ["owner","computer","last_seen","attention"].includes(String(params.sort)) ? String(params.sort) : "attention";
+  const size = [20,50,100].includes(Number(params.size)) ? Number(params.size) : 20;
   const requestedPage = Number.parseInt(String(params.page || "1"), 10) || 1;
-  const pageSize = 20;
 
   let devices = [];
   let events = [];
@@ -59,27 +70,43 @@ export default async function Home({ searchParams }) {
 
   const online = devices.filter((d) => isOnline(d.last_seen_at)).length;
   const protectedCount = devices.filter((d) => d.protection_status === "protected").length;
-  const attention = devices.filter((d) =>
-    d.security_posture === "warning" || d.security_posture === "critical" ||
-    (Array.isArray(d.remote_tools_detected) && d.remote_tools_detected.length > 0)
-  ).length;
+  const remoteConnected = devices.filter((d) => remoteSupportOn(d)).length;
+  const attention = devices.filter((d) => attentionRank(d) >= 2).length;
 
   const needle = q.toLowerCase();
-  const filtered = needle
-    ? devices.filter((d) => [d.person_name, d.device_name, d.computer_name, d.device_code]
-        .some((v) => String(v || "").toLowerCase().includes(needle)))
-    : devices;
+  let filtered = devices.filter((d) => {
+    const matchesSearch = !needle || [d.person_name, d.device_name, d.computer_name, d.device_code, d.os_version]
+      .some((v) => String(v || "").toLowerCase().includes(needle));
+    const onlineNow = isOnline(d.last_seen_at);
+    const remoteOn = remoteSupportOn(d);
+    const matchesStatus = status === "all" || (status === "online" ? onlineNow : !onlineNow);
+    const matchesPosture = posture === "all" ||
+      (posture === "healthy" ? d.security_posture === "healthy" : attentionRank(d) >= 2);
+    const matchesRemote = remote === "all" || (remote === "on" ? remoteOn : !remoteOn);
+    return matchesSearch && matchesStatus && matchesPosture && matchesRemote;
+  });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  filtered = [...filtered].sort((a,b) => {
+    if (sort === "owner") return String(a.person_name || "").localeCompare(String(b.person_name || ""));
+    if (sort === "computer") return String(a.computer_name || "").localeCompare(String(b.computer_name || ""));
+    if (sort === "last_seen") return new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime();
+    return attentionRank(b) - attentionRank(a) || String(a.person_name || "").localeCompare(String(b.person_name || ""));
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / size));
   const currentPage = Math.min(Math.max(1, requestedPage), totalPages);
-  const start = (currentPage - 1) * pageSize;
-  const pageDevices = filtered.slice(start, start + pageSize);
+  const start = (currentPage - 1) * size;
+  const pageDevices = filtered.slice(start, start + size);
 
-  function pageHref(page) {
+  function hrefWith(overrides = {}) {
+    const values = { q, status, posture, remote, sort, size, page: currentPage, ...overrides };
     const query = new URLSearchParams();
-    if (q) query.set("q", q);
-    query.set("page", String(page));
-    return `/?${query.toString()}`;
+    if (values.q) query.set("q", values.q);
+    for (const key of ["status","posture","remote","sort"]) if (values[key] && values[key] !== "all") query.set(key, String(values[key]));
+    if (values.size !== 20) query.set("size", String(values.size));
+    if (values.page !== 1) query.set("page", String(values.page));
+    const qs = query.toString();
+    return qs ? `/?${qs}` : "/";
   }
 
   return (
@@ -96,7 +123,7 @@ export default async function Home({ searchParams }) {
       <section className="stats">
         <article><span>Total devices</span><strong>{devices.length}</strong></article>
         <article><span>Online</span><strong>{online}</strong></article>
-        <article><span>Protected</span><strong>{protectedCount}</strong></article>
+        <article><span>Remote connected</span><strong>{remoteConnected}</strong></article>
         <article><span>Needs attention</span><strong>{attention}</strong></article>
       </section>
 
@@ -106,19 +133,46 @@ export default async function Home({ searchParams }) {
         <div className="sectionHeading deviceHeading">
           <div>
             <h2>Devices</h2>
-            <span>{filtered.length}{q ? ` matching of ${devices.length}` : " enrolled"}</span>
+            <span>{filtered.length} shown · {devices.length} enrolled · {protectedCount} protected</span>
           </div>
-          <form className="deviceSearch" method="get">
-            <input name="q" defaultValue={q} placeholder="Search name, PC or Device ID" />
-            <button type="submit">Search</button>
-            {q ? <Link href="/" className="clearSearch">Clear</Link> : null}
-          </form>
         </div>
+
+        <form className="filterBar" method="get">
+          <input name="q" defaultValue={q} placeholder="Search owner, PC, Device ID or Windows version" />
+          <select name="status" defaultValue={status}>
+            <option value="all">All status</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+          </select>
+          <select name="posture" defaultValue={posture}>
+            <option value="all">All security</option>
+            <option value="healthy">Healthy</option>
+            <option value="attention">Needs attention</option>
+          </select>
+          <select name="remote" defaultValue={remote}>
+            <option value="all">All remote support</option>
+            <option value="on">Remote On</option>
+            <option value="off">Remote Off</option>
+          </select>
+          <select name="sort" defaultValue={sort}>
+            <option value="attention">Sort: attention first</option>
+            <option value="last_seen">Sort: last seen</option>
+            <option value="owner">Sort: owner A-Z</option>
+            <option value="computer">Sort: computer A-Z</option>
+          </select>
+          <select name="size" defaultValue={String(size)}>
+            <option value="20">20 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+          <button type="submit">Apply</button>
+          {(q || status !== "all" || posture !== "all" || remote !== "all" || sort !== "attention" || size !== 20) ? <Link href="/" className="clearSearch">Reset</Link> : null}
+        </form>
 
         {filtered.length === 0 && !error ? (
           <div className="empty">
-            <h3>{q ? "No matching devices" : "No PCs enrolled yet"}</h3>
-            <p>{q ? "Try a different name, computer name or Device ID." : "DeviceHost is ready. The first WindowsProtect PC will appear here after enrollment."}</p>
+            <h3>No matching devices</h3>
+            <p>Change or reset the search and filters.</p>
           </div>
         ) : (
           <>
@@ -129,8 +183,9 @@ export default async function Home({ searchParams }) {
                     <th>Owner / device</th>
                     <th>Computer</th>
                     <th>Status</th>
-                    <th>Protection</th>
-                    <th>Remote support</th>
+                    <th>Security</th>
+                    <th>Remote</th>
+                    <th>WindowsProtect</th>
                     <th>Last seen</th>
                     <th></th>
                   </tr>
@@ -151,6 +206,7 @@ export default async function Home({ searchParams }) {
                         <td><span className={onlineNow ? "status online" : "status offline"}>{onlineNow ? "Online" : "Offline"}</span></td>
                         <td><span className={`tablePosture ${device.security_posture || "unknown"}`}>{postureLabel(device.security_posture)}</span></td>
                         <td><span className={remoteOn ? "health good" : "health bad"}>{remoteOn ? "On" : "Off"}</span></td>
+                        <td>{device.agent_version || "Pending"}</td>
                         <td>{timeAgo(device.last_seen_at)}</td>
                         <td><Link className="openDevice" href={`/device/${device.id}`}>Open</Link></td>
                       </tr>
@@ -160,13 +216,16 @@ export default async function Home({ searchParams }) {
               </table>
             </div>
 
-            {totalPages > 1 ? (
-              <nav className="pagination" aria-label="Device pages">
-                <Link className={currentPage === 1 ? "disabled" : ""} href={pageHref(Math.max(1, currentPage - 1))}>Previous</Link>
-                <span>Page {currentPage} of {totalPages}</span>
-                <Link className={currentPage === totalPages ? "disabled" : ""} href={pageHref(Math.min(totalPages, currentPage + 1))}>Next</Link>
-              </nav>
-            ) : null}
+            <div className="tableFooter">
+              <span>Showing {filtered.length ? start + 1 : 0}-{Math.min(start + size, filtered.length)} of {filtered.length}</span>
+              {totalPages > 1 ? (
+                <nav className="pagination" aria-label="Device pages">
+                  <Link className={currentPage === 1 ? "disabled" : ""} href={hrefWith({page:Math.max(1,currentPage-1)})}>Previous</Link>
+                  <span>Page {currentPage} of {totalPages}</span>
+                  <Link className={currentPage === totalPages ? "disabled" : ""} href={hrefWith({page:Math.min(totalPages,currentPage+1)})}>Next</Link>
+                </nav>
+              ) : null}
+            </div>
           </>
         )}
       </section>
@@ -196,8 +255,8 @@ export default async function Home({ searchParams }) {
 
       <section className="section">
         <div className="noticeBox">
-          <strong>Remote support is separated from DeviceHost</strong>
-          <p>DeviceHost monitors WindowsProtect security health. Interactive remote control is handled by the separately authenticated MeshCentral server; DeviceHost does not expose a remote shell.</p>
+          <strong>Remote support stays in MeshCentral</strong>
+          <p>DeviceHost is the monitoring and security dashboard. Remote desktop, chat, user messages, opening a webpage and temporary support links are handled by the separately authenticated MeshCentral control plane.</p>
         </div>
       </section>
     </main>
