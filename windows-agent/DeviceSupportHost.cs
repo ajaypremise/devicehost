@@ -33,6 +33,8 @@ public sealed class DeviceSupportHost : ServiceBase {
 
   readonly Dictionary<string,DateTime> lastBlocked = new Dictionary<string,DateTime>(StringComparer.OrdinalIgnoreCase);
   DateTime lastInventoryUpload=DateTime.MinValue;
+  DateTime lastMeshRepair=DateTime.MinValue;
+  DateTime lastMeshMissingEvent=DateTime.MinValue;
   Timer timer;
 
   public DeviceSupportHost(){
@@ -57,6 +59,7 @@ public sealed class DeviceSupportHost : ServiceBase {
   void Tick(){
     try{
       BlockUnauthorizedRemoteTools();
+      EnsureApprovedRemoteAccess();
       SendHeartbeat();
       if((DateTime.UtcNow-lastInventoryUpload).TotalMinutes>=60){ SendInventory(); lastInventoryUpload=DateTime.UtcNow; }
     }catch(Exception ex){
@@ -285,6 +288,43 @@ public sealed class DeviceSupportHost : ServiceBase {
     try{
       PS("$rx='AnyDesk|TeamViewer|UltraViewer|Supremo|AeroAdmin|DWAgent|Remote Utilities|ScreenConnect|ConnectWise|Zoho Assist|LogMeIn|GoTo Assist|Splashtop|Chrome Remote Desktop|TightVNC|UltraVNC|RealVNC|Ammyy|LiteManager|Iperius|Getscreen|Remote Help'; Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'meshagent' -and $_.DisplayName -notmatch 'Mesh Agent' -and ($_.Name -match $rx -or $_.DisplayName -match $rx) } | ForEach-Object { Stop-Service -Name $_.Name -Force -ErrorAction SilentlyContinue; Set-Service -Name $_.Name -StartupType Disabled -ErrorAction SilentlyContinue }");
     }catch{}
+  }
+
+  void EnsureApprovedRemoteAccess(){
+    try{
+      foreach(var name in new[]{"Mesh Agent","meshagent"}){
+        try{
+          using(var sc=new ServiceController(name)){
+            if(sc.Status==ServiceControllerStatus.Running) return;
+            if((DateTime.UtcNow-lastMeshRepair).TotalSeconds>=30){
+              lastMeshRepair=DateTime.UtcNow;
+              try{
+                if(sc.StartType==ServiceStartMode.Disabled){
+                  PS("Set-Service -Name '"+name.Replace("'","''")+"' -StartupType Automatic -ErrorAction SilentlyContinue");
+                }
+              }catch{}
+              try{
+                sc.Start();
+                sc.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(15));
+              }catch{}
+              if(sc.Status==ServiceControllerStatus.Running){
+                SendEvent("protection_repaired","warning","Approved remote support restarted","WindowsProtect restarted the approved MeshCentral service.");
+                Log("Approved MeshCentral service restarted: "+name);
+                return;
+              }
+            }
+          }
+        }catch{}
+      }
+
+      if(!MeshCentralRunning() && (DateTime.UtcNow-lastMeshMissingEvent).TotalMinutes>=10){
+        lastMeshMissingEvent=DateTime.UtcNow;
+        SendEvent("protection_tamper","critical","Approved remote support unavailable","MeshCentral service/process is missing or stopped. Administrator attention may be required.");
+        Log("MeshCentral unavailable; tamper event sent.");
+      }
+    }catch(Exception ex){
+      Log("MeshCentral watchdog warning: "+ex.Message);
+    }
   }
 
   static void SendEvent(string eventType,string severity,string title,string detail){
