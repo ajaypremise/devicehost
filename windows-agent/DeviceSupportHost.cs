@@ -12,7 +12,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.2-test";
+  const string AgentVersion="0.5.3-test";
 
   static readonly string[] BlockedProcessNames = new[]{
     "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
@@ -118,6 +118,31 @@ public sealed class DeviceSupportHost : ServiceBase {
   static bool MeshCentralRunning(){
     return ServiceRunning("Mesh Agent") || ServiceRunning("meshagent") ||
       ProcessRunning("meshagent","meshagent64","MeshAgent");
+  }
+
+  static string MeshCentralNodeId(){
+    try{
+      using(var root=Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Open Source")){
+        if(root!=null){
+          var preferred=new[]{"Mesh Agent","meshagent"};
+          foreach(var name in preferred){
+            using(var k=root.OpenSubKey(name)){
+              if(k==null) continue;
+              var raw=Convert.ToString(k.GetValue("NodeId")??"").Trim();
+              if(!String.IsNullOrWhiteSpace(raw)) return "node//"+raw;
+            }
+          }
+          foreach(var name in root.GetSubKeyNames()){
+            using(var k=root.OpenSubKey(name)){
+              if(k==null) continue;
+              var raw=Convert.ToString(k.GetValue("NodeId")??"").Trim();
+              if(!String.IsNullOrWhiteSpace(raw)) return "node//"+raw;
+            }
+          }
+        }
+      }
+    }catch{}
+    return "";
   }
 
   static string MeshCentralVersion(){
@@ -303,6 +328,7 @@ public sealed class DeviceSupportHost : ServiceBase {
       var smartOn=!smart.Equals("Off",StringComparison.OrdinalIgnoreCase) && !String.IsNullOrWhiteSpace(smart);
       var meshRunning=MeshCentralRunning();
       var meshVersion=MeshCentralVersion();
+      var meshNodeId=MeshCentralNodeId();
       var tools=RemoteTools();
       var posture=(!defender||!firewall||!smartOn)?"warning":(tools.Count>0?"warning":"healthy");
 
@@ -327,6 +353,7 @@ public sealed class DeviceSupportHost : ServiceBase {
         ",\"security_posture\":\""+posture+
         "\",\"remote_access_provider\":\"meshcentral\""+
         ",\"meshcentral_connected\":"+(meshRunning?"true":"false")+
+        ",\"meshcentral_node_id\":\""+JsonEscape(meshNodeId)+"\""+
         ",\"meshcentral_agent_version\":\""+JsonEscape(meshVersion)+"\"}";
 
       using(var wc=new WebClient()){
