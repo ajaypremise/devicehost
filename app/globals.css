@@ -243,3 +243,16 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .nameEditor button { border:1px solid var(--line); background:var(--panel-2); color:var(--text); border-radius:8px; padding:8px 10px; cursor:pointer; font-size:12px; }
 .nameEditor button[type="submit"] { background:#f4f7fb; color:#0b0e13; font-weight:750; }
 .nameEditor span { color:#ffb5ba; font-size:11px; width:100%; }
+
+
+.remoteActionPanel { margin:0 0 14px; border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:16px; }
+.remoteActionButtons { display:flex; gap:8px; flex-wrap:wrap; }
+.remoteActionButtons button, .remoteActionForm button { border:1px solid var(--line); background:#f4f7fb; color:#0b0e13; border-radius:8px; padding:9px 12px; font-weight:750; cursor:pointer; }
+.remoteActionButtons button:disabled, .remoteActionForm button:disabled { opacity:.45; cursor:default; }
+.remoteActionHint { margin:10px 0 0; color:var(--muted); font-size:11px; }
+.remoteActionForm { display:grid; gap:9px; margin-top:12px; max-width:720px; }
+.remoteActionForm input, .remoteActionForm textarea, .remoteActionForm select { width:100%; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:10px 11px; font:inherit; font-size:12px; }
+.remoteActionForm textarea { min-height:96px; resize:vertical; }
+.remoteActionRow { display:grid; grid-template-columns:180px auto; gap:8px; align-items:center; }
+.remoteActionResult { margin-top:10px; color:#c7f6e3; font-size:11px; }
+@media (max-width: 560px) { .remoteActionRow { grid-template-columns:1fr; } }
