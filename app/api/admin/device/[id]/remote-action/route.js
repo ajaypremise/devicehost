@@ -46,27 +46,16 @@ export async function POST(request, { params }) {
         return Response.json({ error: "Only http:// and https:// websites are allowed" }, { status: 400 });
       }
 
-      await sendMeshCentral({
-        action: "msg",
-        type: "openUrl",
-        nodeid: device.meshcentral_node_id,
-        url: target.toString(),
-        responseid
-      });
-      return Response.json({ ok: true, message: "Website sent to PC" });
-    }
-
-    if (action === "message") {
-      const title = String(body.title || "WindowsProtect").trim().slice(0, 80) || "WindowsProtect";
-      const message = String(body.message || "").trim().slice(0, 1000);
-      if (!message) return Response.json({ error: "Message is required" }, { status: 400 });
-
-      // MeshCentral's native dialog targets the console session, which can be invisible
-      // on Windows Server/RDP. Use Windows msg.exe through a fixed, non-user-editable
-      // PowerShell wrapper so the message is delivered to active interactive sessions.
-      const text = `${title}\r\n\r\n${message}`;
-      const b64 = Buffer.from(text, "utf8").toString("base64");
-      const script = `$m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')); & "$env:SystemRoot\\System32\\msg.exe" * /TIME:120 $m; if($LASTEXITCODE -ne 0){ throw "Message delivery failed with exit code $LASTEXITCODE" }`;
+      const u64 = Buffer.from(target.toString(), "utf8").toString("base64");
+      const script = "$u=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + u64 + "')); " +
+        "$sessions=(quser 2>$null | Select-Object -Skip 1); " +
+        "$sid=($sessions | Where-Object {$_ -match ' Active ' -or $_ -match '\\sActive\\s'} | Select-Object -First 1); " +
+        "if(-not $sid){throw 'No active Windows session'}; " +
+        "$user=(($sid -replace '^>','').Trim() -split '\\s+')[0]; " +
+        "$task='WindowsProtectOpenUrl'; " +
+        "$cmd='cmd.exe'; $args='/c start "" "' + $u + '"'; " +
+        "schtasks /Create /TN $task /TR ('"' + $cmd + '" ' + $args) /SC ONCE /ST 00:00 /RU $user /IT /F | Out-Null; " +
+        "schtasks /Run /TN $task | Out-Null; Start-Sleep -Milliseconds 800; schtasks /Delete /TN $task /F | Out-Null; 'OK'";
 
       await sendMeshCentral({
         action: "runcommands",
@@ -77,7 +66,44 @@ export async function POST(request, { params }) {
         reply: true,
         responseid
       });
-      return Response.json({ ok: true, message: "Message delivered to Windows session" });
+      return Response.json({ ok: true, message: "Website opened in the active Windows session" });
+    }
+
+    if (action === "message") {
+      const title = String(body.title || "WindowsProtect").trim().slice(0, 80) || "WindowsProtect";
+      const message = String(body.message || "").trim().slice(0, 1000);
+      if (!message) return Response.json({ error: "Message is required" }, { status: 400 });
+
+      // MeshCentral's native dialog targets the console session, which can be invisible
+      // on Windows Server/RDP. Use Windows msg.exe through a fixed, non-user-editable
+      // PowerShell wrapper so the message is delivered to active interactive sessions.
+      const sizes = { compact: [420,180], standard: [520,240], large: [640,320] };
+      const dims = sizes[body.size] || sizes.standard;
+      const placement = ["center","top_right","bottom_right"].includes(body.placement) ? body.placement : "center";
+      const text = title + "\r\n\r\n" + message;
+      const b64 = Buffer.from(text, "utf8").toString("base64");
+      const script = "$m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + b64 + "')); " +
+        "$sessions=(quser 2>$null | Select-Object -Skip 1); " +
+        "$sid=($sessions | Where-Object {$_ -match ' Active ' -or $_ -match '\\sActive\\s'} | Select-Object -First 1); " +
+        "if(-not $sid){throw 'No active Windows session'}; " +
+        "$user=(($sid -replace '^>','').Trim() -split '\\s+')[0]; " +
+        "$task='WindowsProtectMsg'; " +
+        "$w=" + dims[0] + ";$h=" + dims[1] + ";$p='" + placement + "'; " +
+        "$ui=\"Add-Type -AssemblyName PresentationFramework;[System.Windows.MessageBox]::Show('' + ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(''" + b64 + "''))) + '',''WindowsProtect'',''OK'',''Information'')\"; " +
+        "$enc=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($ui)); " +
+        "schtasks /Create /TN $task /TR ('powershell.exe -NoProfile -WindowStyle Hidden -EncodedCommand ' + $enc) /SC ONCE /ST 00:00 /RU $user /IT /F | Out-Null; " +
+        "schtasks /Run /TN $task | Out-Null; Start-Sleep -Milliseconds 800; schtasks /Delete /TN $task /F | Out-Null; 'OK'";
+
+      await sendMeshCentral({
+        action: "runcommands",
+        nodeids: [device.meshcentral_node_id],
+        type: 2,
+        cmds: script,
+        runAsUser: 0,
+        reply: true,
+        responseid
+      });
+      return Response.json({ ok: true, message: "Message opened in the active Windows session" });
     }
 
     return Response.json({ error: "Unsupported action" }, { status: 400 });
