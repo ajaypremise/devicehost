@@ -12,5 +12,8 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "ws": "^8.18.3"
+  },
+  "overrides": {
+    "source-map-js": "1.2.1"
   }
 }
