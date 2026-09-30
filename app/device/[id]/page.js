@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import DeviceNameEditor from "./DeviceNameEditor";
+import RemoteActions from "./RemoteActions";
 
 export const dynamic = "force-dynamic";
 
@@ -88,10 +89,10 @@ export default async function DevicePage({ params }) {
 
       <section className="quickActions">
         <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Remote desktop</strong><span>Open this device in MeshCentral</span></a>
-        <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Message user</strong><span>Use MeshCentral chat / message</span></a>
-        <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Open webpage</strong><span>Use MeshCentral supported user action</span></a>
         <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Temporary support</strong><span>Create a time-limited guest link</span></a>
       </section>
+
+      <RemoteActions deviceId={device.id} nodeId={device.meshcentral_node_id || ""} connected={remoteOn} />
 
       <section className="detailGrid">
         <DetailBlock title="Security health">
