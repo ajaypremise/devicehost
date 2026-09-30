@@ -148,7 +148,7 @@ public class WindowsProtectSetup : Form {
       if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
 
       SetStatus("Enrolling this PC in DeviceHost...");
-      var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.0-test\",\"remote_access_provider\":\"meshcentral\"}";
+      var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.1-test\",\"remote_access_provider\":\"meshcentral\"}";
       var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
       var token=JsonValue(enrolled,"device_token");
       if(String.IsNullOrWhiteSpace(token)) throw new Exception("DeviceHost did not return a device token.");
