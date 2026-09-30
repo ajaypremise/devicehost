@@ -198,6 +198,7 @@ public class WindowsProtectSetup : Form {
       }
 
       InstallOrUpdateService();
+      HardenWindowsProtect();
 
       if(saveCredential.Checked && !String.IsNullOrWhiteSpace(userBox.Text) && !String.IsNullOrWhiteSpace(passBox.Text)){
         SetStatus("Saving optional Windows credential locally...");
@@ -248,7 +249,7 @@ public class WindowsProtectSetup : Form {
   static void InstallUserUI(){
     var script=@"
 $ErrorActionPreference='SilentlyContinue'
-$cmdFile='C:\ProgramData\WindowsProtect\ui-command.txt'
+$cmdFile='C:\ProgramData\WindowsProtect\UI\ui-command.txt'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 while($true){
@@ -353,6 +354,27 @@ while($true){
     }
 
     throw new IOException("WindowsProtect service is still using its executable. Please wait a few seconds and try again.");
+  }
+
+  static void HardenWindowsProtect(){
+    try{
+      Directory.CreateDirectory(Path.Combine(DataDir,"UI"));
+      RunSc("failureflag DeviceSupportHost 1");
+      RunIcacls(InstallDir,"/inheritance:r /grant:r \"SYSTEM:(OI)(CI)(F)\" \"Administrators:(OI)(CI)(F)\" \"Users:(OI)(CI)(RX)\"");
+      RunIcacls(DataDir,"/inheritance:r /grant:r \"SYSTEM:(OI)(CI)(F)\" \"Administrators:(OI)(CI)(F)\"");
+      var uiDir=Path.Combine(DataDir,"UI");
+      RunIcacls(uiDir,"/inheritance:r /grant:r \"SYSTEM:(OI)(CI)(F)\" \"Administrators:(OI)(CI)(F)\" \"Users:(OI)(CI)(M)\"");
+      var tokenPath=Path.Combine(DataDir,"device.token");
+      if(File.Exists(tokenPath)) RunIcacls(tokenPath,"/inheritance:r /grant:r \"SYSTEM:(F)\" \"Administrators:(F)\"");
+    }catch{}
+  }
+
+  static void RunIcacls(string path,string args){
+    try{
+      using(var p=new Process{StartInfo=new ProcessStartInfo("icacls.exe","\""+path+"\" "+args){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true}}){
+        p.Start(); p.WaitForExit(15000);
+      }
+    }catch{}
   }
 
   static void InstallOrUpdateService(){
