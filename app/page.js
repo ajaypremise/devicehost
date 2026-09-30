@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export const dynamic = "force-dynamic";
 
 async function supabaseGet(resource) {
@@ -21,19 +23,27 @@ function timeAgo(value) {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
 }
+
 function isOnline(lastSeen) {
   return Boolean(lastSeen) && Date.now() - new Date(lastSeen).getTime() < 10 * 60 * 1000;
 }
-function health(value) {
-  if (value === true) return <span className="health good">On</span>;
-  if (value === false) return <span className="health bad">Off</span>;
-  return <span className="health unknown">Unknown</span>;
+
+function remoteSupportOn(device) {
+  return device.remote_access_provider === "meshcentral"
+    ? device.meshcentral_connected === true
+    : device.rustdesk_service_running === true;
 }
+
 function postureLabel(value) {
   return value && value !== "unknown" ? value : "Awaiting telemetry";
 }
 
-export default async function Home() {
+export default async function Home({ searchParams }) {
+  const params = (await searchParams) || {};
+  const q = String(params.q || "").trim();
+  const requestedPage = Number.parseInt(String(params.page || "1"), 10) || 1;
+  const pageSize = 20;
+
   let devices = [];
   let events = [];
   let error = "";
@@ -41,7 +51,7 @@ export default async function Home() {
   try {
     [devices, events] = await Promise.all([
       supabaseGet("devices?select=*&order=created_at.desc"),
-      supabaseGet("security_events?select=id,device_id,event_type,severity,title,details,created_at&order=created_at.desc&limit=20"),
+      supabaseGet("security_events?select=id,device_id,event_type,severity,title,details,created_at&order=created_at.desc&limit=12"),
     ]);
   } catch (err) {
     error = err instanceof Error ? err.message : "Unable to load dashboard.";
@@ -54,8 +64,26 @@ export default async function Home() {
     (Array.isArray(d.remote_tools_detected) && d.remote_tools_detected.length > 0)
   ).length;
 
+  const needle = q.toLowerCase();
+  const filtered = needle
+    ? devices.filter((d) => [d.person_name, d.device_name, d.computer_name, d.device_code]
+        .some((v) => String(v || "").toLowerCase().includes(needle)))
+    : devices;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(Math.max(1, requestedPage), totalPages);
+  const start = (currentPage - 1) * pageSize;
+  const pageDevices = filtered.slice(start, start + pageSize);
+
+  function pageHref(page) {
+    const query = new URLSearchParams();
+    if (q) query.set("q", q);
+    query.set("page", String(page));
+    return `/?${query.toString()}`;
+  }
+
   return (
-    <main className="shell">
+    <main className="shell wideShell">
       <header className="topbar">
         <div>
           <div className="eyebrow">WINDOWSPROTECT</div>
@@ -75,77 +103,76 @@ export default async function Home() {
       {error ? <div className="errorBox">{error}</div> : null}
 
       <section className="section">
-        <div className="sectionHeading"><h2>Devices</h2><span>{devices.length} enrolled</span></div>
-        {devices.length === 0 && !error ? (
+        <div className="sectionHeading deviceHeading">
+          <div>
+            <h2>Devices</h2>
+            <span>{filtered.length}{q ? ` matching of ${devices.length}` : " enrolled"}</span>
+          </div>
+          <form className="deviceSearch" method="get">
+            <input name="q" defaultValue={q} placeholder="Search name, PC or Device ID" />
+            <button type="submit">Search</button>
+            {q ? <Link href="/" className="clearSearch">Clear</Link> : null}
+          </form>
+        </div>
+
+        {filtered.length === 0 && !error ? (
           <div className="empty">
-            <h3>No PCs enrolled yet</h3>
-            <p>DeviceHost is ready. The first WindowsProtect PC will appear here after enrollment.</p>
+            <h3>{q ? "No matching devices" : "No PCs enrolled yet"}</h3>
+            <p>{q ? "Try a different name, computer name or Device ID." : "DeviceHost is ready. The first WindowsProtect PC will appear here after enrollment."}</p>
           </div>
         ) : (
-          <div className="deviceGrid">
-            {devices.map((device) => {
-              const onlineNow = isOnline(device.last_seen_at);
-              const tools = Array.isArray(device.remote_tools_detected) ? device.remote_tools_detected : [];
-              return (
-                <article className="deviceCard" key={device.id}>
-                  <div className="cardTop">
-                    <div>
-                      <h3>{device.person_name}</h3>
-                      <p>{device.device_name} · {device.computer_name || "Computer name pending"}</p>
-                    </div>
-                    <span className={onlineNow ? "status online" : "status offline"}>
-                      {onlineNow ? "Online" : "Offline"}
-                    </span>
-                  </div>
+          <>
+            <div className="deviceTableWrap">
+              <table className="deviceTable">
+                <thead>
+                  <tr>
+                    <th>Owner / device</th>
+                    <th>Computer</th>
+                    <th>Status</th>
+                    <th>Protection</th>
+                    <th>Remote support</th>
+                    <th>Last seen</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageDevices.map((device) => {
+                    const onlineNow = isOnline(device.last_seen_at);
+                    const remoteOn = remoteSupportOn(device);
+                    return (
+                      <tr key={device.id}>
+                        <td>
+                          <Link className="devicePrimary" href={`/device/${device.id}`}>
+                            <strong>{device.person_name || "Unnamed"}</strong>
+                            <span>{device.device_name || "Unnamed device"} · {device.device_code}</span>
+                          </Link>
+                        </td>
+                        <td>{device.computer_name || "Pending"}</td>
+                        <td><span className={onlineNow ? "status online" : "status offline"}>{onlineNow ? "Online" : "Offline"}</span></td>
+                        <td><span className={`tablePosture ${device.security_posture || "unknown"}`}>{postureLabel(device.security_posture)}</span></td>
+                        <td><span className={remoteOn ? "health good" : "health bad"}>{remoteOn ? "On" : "Off"}</span></td>
+                        <td>{timeAgo(device.last_seen_at)}</td>
+                        <td><Link className="openDevice" href={`/device/${device.id}`}>Open</Link></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-                  <div className="postureRow">
-                    <span>Security posture</span>
-                    <strong className={`posture ${device.security_posture || "unknown"}`}>
-                      {postureLabel(device.security_posture)}
-                    </strong>
-                  </div>
-
-                  <div className="healthGrid">
-                    <div><span>Defender</span>{health(device.defender_enabled)}</div>
-                    <div><span>Firewall</span>{health(device.firewall_enabled)}</div>
-                    <div><span>SmartScreen</span>{health(device.smartscreen_enabled)}</div>
-                    <div><span>Remote support</span>{health(
-                      device.remote_access_provider === "meshcentral"
-                        ? device.meshcentral_connected
-                        : device.rustdesk_service_running
-                    )}</div>
-                  </div>
-
-                  <dl>
-                    <div><dt>Device ID</dt><dd>{device.device_code}</dd></div>
-                    <div><dt>Remote access</dt><dd>{device.remote_access_provider === "meshcentral" ? "MeshCentral" : (device.remote_access_provider || "Pending")}</dd></div>
-                    <div><dt>MeshCentral node</dt><dd>{device.meshcentral_node_id || "Pending"}</dd></div>
-                    <div><dt>MeshCentral agent</dt><dd>{device.meshcentral_agent_version || "—"}</dd></div>
-                    <div><dt>Temporary support</dt><dd>{
-                      device.temporary_support_expires_at
-                        ? `Until ${new Date(device.temporary_support_expires_at).toLocaleString()}`
-                        : "Off"
-                    }</dd></div>
-                    <div><dt>Migration</dt><dd>{device.migration_status || "not_started"}</dd></div>
-                    <div><dt>Windows</dt><dd>{device.os_version || "—"}</dd></div>
-                    <div><dt>Agent</dt><dd>{device.agent_version || "—"}</dd></div>
-                    <div><dt>Installed apps</dt><dd>{device.installed_apps_count ?? "—"}</dd></div>
-                    <div><dt>Last seen</dt><dd>{timeAgo(device.last_seen_at)}</dd></div>
-                  </dl>
-
-                  <div className={tools.length ? "remoteTools dangerBox" : "remoteTools safeBox"}>
-                    <strong>{tools.length ? "Remote-access software detected" : "No unauthorized remote tools reported"}</strong>
-                    {tools.length ? <p>{tools.join(", ")}</p> : null}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+            {totalPages > 1 ? (
+              <nav className="pagination" aria-label="Device pages">
+                <Link className={currentPage === 1 ? "disabled" : ""} href={pageHref(Math.max(1, currentPage - 1))}>Previous</Link>
+                <span>Page {currentPage} of {totalPages}</span>
+                <Link className={currentPage === totalPages ? "disabled" : ""} href={pageHref(Math.min(totalPages, currentPage + 1))}>Next</Link>
+              </nav>
+            ) : null}
+          </>
         )}
       </section>
 
       <section className="section">
-        <div className="sectionHeading"><h2>Recent security events</h2><span>Latest 20</span></div>
+        <div className="sectionHeading"><h2>Recent security events</h2><span>Latest 12</span></div>
         {events.length === 0 && !error ? (
           <div className="empty compact"><p>No security events yet.</p></div>
         ) : (
