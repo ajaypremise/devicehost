@@ -61,27 +61,23 @@ export async function POST(request, { params }) {
       const message = String(body.message || "").trim().slice(0, 1000);
       if (!message) return Response.json({ error: "Message is required" }, { status: 400 });
 
-      const style = body.style === "toast" ? "toast" : "messagebox";
-      if (style === "toast") {
-        await sendMeshCentral({
-          action: "toast",
-          nodeids: [device.meshcentral_node_id],
-          title,
-          msg: message,
-          responseid
-        });
-      } else {
-        await sendMeshCentral({
-          action: "msg",
-          type: "messagebox",
-          nodeid: device.meshcentral_node_id,
-          title,
-          msg: message,
-          timeout: 120000,
-          responseid
-        });
-      }
-      return Response.json({ ok: true, message: "Message sent to PC" });
+      // MeshCentral's native dialog targets the console session, which can be invisible
+      // on Windows Server/RDP. Use Windows msg.exe through a fixed, non-user-editable
+      // PowerShell wrapper so the message is delivered to active interactive sessions.
+      const text = `${title}\r\n\r\n${message}`;
+      const b64 = Buffer.from(text, "utf8").toString("base64");
+      const script = `$m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')); & "$env:SystemRoot\\System32\\msg.exe" * /TIME:120 $m; if($LASTEXITCODE -ne 0){ throw "Message delivery failed with exit code $LASTEXITCODE" }`;
+
+      await sendMeshCentral({
+        action: "runcommands",
+        nodeids: [device.meshcentral_node_id],
+        type: 2,
+        cmds: script,
+        runAsUser: 0,
+        reply: true,
+        responseid
+      });
+      return Response.json({ ok: true, message: "Message delivered to Windows session" });
     }
 
     return Response.json({ error: "Unsupported action" }, { status: 400 });
