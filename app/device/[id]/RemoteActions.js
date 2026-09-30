@@ -7,7 +7,6 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
   const [url,setUrl]=useState("");
   const [title,setTitle]=useState("WindowsProtect");
   const [message,setMessage]=useState("");
-  const [style,setStyle]=useState("toast");
   const [busy,setBusy]=useState(false);
   const [result,setResult]=useState("");
 
@@ -47,11 +46,8 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
           <input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Title" maxLength={80} />
           <textarea value={message} onChange={(e)=>setMessage(e.target.value)} placeholder="Type the message shown on the PC..." maxLength={1000} />
           <div className="remoteActionRow">
-            <select value={style} onChange={(e)=>setStyle(e.target.value)}>
-              <option value="toast">Notification</option>
-              <option value="messagebox">Message box</option>
-            </select>
-            <button disabled={busy || !message.trim()} onClick={()=>send({action:"message",title,message,style})}>{busy?"Sending...":"Send to PC"}</button>
+            <span className="remoteActionHint">Shown directly in the active Windows session.</span>
+            <button disabled={busy || !message.trim()} onClick={()=>send({action:"message",title,message})}>{busy?"Sending...":"Send to PC"}</button>
           </div>
         </div>
       ) : null}
