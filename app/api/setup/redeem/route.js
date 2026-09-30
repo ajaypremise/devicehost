@@ -50,7 +50,8 @@ export async function POST(request) {
     return Response.json({
       ok: true,
       device_enrollment_key: enrollmentHeaders(),
-      meshcentral_url: "https://34-69-184-103.sslip.io"
+      meshcentral_url: "https://34-69-184-103.sslip.io",
+      mesh_agent_url: process.env.MESHCENTRAL_AGENT_URL || null
     });
   } catch (error) {
     return Response.json({ error: "Unable to redeem setup code", detail: String(error) }, { status: 500 });
