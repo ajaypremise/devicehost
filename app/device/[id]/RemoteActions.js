@@ -23,7 +23,7 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
         body:JSON.stringify(payload)
       });
       const data=await response.json();
-      if(!response.ok) throw new Error(data.error || "Action failed");
+      if(!response.ok) throw new Error((data.error || "Action failed") + (data.detail ? ": " + data.detail : ""));
       setResult(data.message || "Sent");
       if(payload.action==="open_url") setUrl("");
       if(payload.action==="message") setMessage("");
