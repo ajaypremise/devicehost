@@ -83,6 +83,13 @@ export default async function DevicePage({ params }) {
         <StateBlock label="Last seen" value={timeAgo(device.last_seen_at)} state={online ? "good" : "neutral"} note={device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : "No heartbeat yet"} />
       </section>
 
+      <section className="quickActions">
+        <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Remote desktop</strong><span>Open this device in MeshCentral</span></a>
+        <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Message user</strong><span>Use MeshCentral chat / message</span></a>
+        <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Open webpage</strong><span>Use MeshCentral supported user action</span></a>
+        <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Temporary support</strong><span>Create a time-limited guest link</span></a>
+      </section>
+
       <section className="detailGrid">
         <DetailBlock title="Security health">
           <Row label="Microsoft Defender">{device.defender_enabled === true ? "On" : device.defender_enabled === false ? "Off" : "Unknown"}</Row>
