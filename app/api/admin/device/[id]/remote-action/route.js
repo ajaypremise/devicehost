@@ -47,14 +47,15 @@ export async function POST(request, { params }) {
       }
 
       const u64 = Buffer.from(target.toString(), "utf8").toString("base64");
-      const script = "$u=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + u64 + "')); " +
-        "$sessions=(quser 2>$null | Select-Object -Skip 1); " +
+      const openUi = "$u=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + u64 + "')); Start-Process $u";
+      const open64 = Buffer.from(openUi, "utf16le").toString("base64");
+      const script = "$sessions=(quser 2>$null | Select-Object -Skip 1); " +
         "$sid=($sessions | Where-Object {$_ -match ' Active ' -or $_ -match '\\sActive\\s'} | Select-Object -First 1); " +
         "if(-not $sid){throw 'No active Windows session'}; " +
         "$user=(($sid -replace '^>','').Trim() -split '\\s+')[0]; " +
         "$task='WindowsProtectOpenUrl'; " +
-        "$cmd='cmd.exe'; $args='/c start \"\" \"' + $u + '\"'; " +
-        "schtasks /Create /TN $task /TR ('"' + $cmd + '" ' + $args) /SC ONCE /ST 00:00 /RU $user /IT /F | Out-Null; " +
+        "$tr='powershell.exe -NoProfile -WindowStyle Hidden -EncodedCommand " + open64 + "'; " +
+        "schtasks /Create /TN $task /TR $tr /SC ONCE /ST 00:00 /RU $user /IT /F | Out-Null; " +
         "schtasks /Run /TN $task | Out-Null; Start-Sleep -Milliseconds 800; schtasks /Delete /TN $task /F | Out-Null; 'OK'";
 
       await sendMeshCentral({
