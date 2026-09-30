@@ -1,4 +1,4 @@
-import { meshcentralConfigured, sendMeshCentral } from "@/app/lib/meshcentral";
+import { meshcentralConfigured, sendMeshCentral } from "../../../../../lib/meshcentral";
 
 export const runtime = "nodejs";
 
