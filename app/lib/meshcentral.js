@@ -53,7 +53,7 @@ export function sendMeshCentral(command) {
       try {
         const data = JSON.parse(String(raw));
         if (data.responseid === command.responseid) {
-          if (data.result && String(data.result).toLowerCase() !== "ok") {
+          if (data.result && String(data.result).trim().toLowerCase() !== "ok") {
             finish(new Error(String(data.result)));
           } else {
             finish(null, data);
