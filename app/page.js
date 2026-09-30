@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SetupCodePanel from "./SetupCodePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -229,6 +230,8 @@ export default async function Home({ searchParams }) {
           </>
         )}
       </section>
+
+      <SetupCodePanel />
 
       <section className="section">
         <div className="sectionHeading"><h2>Recent security events</h2><span>Latest 12</span></div>
