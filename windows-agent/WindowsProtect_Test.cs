@@ -31,7 +31,7 @@ class WindowsProtectTest {
   }
   static List<string> RemoteTools(){
     var hits=new List<string>();
-    string[] needles={"AnyDesk","TeamViewer","UltraViewer","Supremo","AeroAdmin","DWAgent","Remote Utilities","ScreenConnect","ConnectWise Control","Zoho Assist","LogMeIn","GoTo Assist","Splashtop","Chrome Remote Desktop","TightVNC","UltraVNC","RealVNC","MeshCentral","Ammyy","LiteManager","Iperius Remote","Getscreen","Remote Help"};
+    string[] needles={"AnyDesk","TeamViewer","UltraViewer","Supremo","AeroAdmin","DWAgent","Remote Utilities","ScreenConnect","ConnectWise Control","Zoho Assist","LogMeIn","GoTo Assist","Splashtop","Chrome Remote Desktop","TightVNC","UltraVNC","RealVNC","Ammyy","LiteManager","Iperius Remote","Getscreen","Remote Help"};
     foreach(var path in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){
       using(var root=Registry.LocalMachine.OpenSubKey(path)){ if(root==null) continue; foreach(var n in root.GetSubKeyNames()){ using(var k=root.OpenSubKey(n)){ var d=(k.GetValue("DisplayName") as string)??""; foreach(var x in needles) if(d.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0 && !hits.Contains(d)) hits.Add(d); } } }
     }
@@ -53,7 +53,7 @@ class WindowsProtectTest {
 
   static void Main(){
     Console.Title="WindowsProtect Test";
-    Console.WriteLine("WindowsProtect v0.3 - DeviceHost telemetry test\n");
+    Console.WriteLine("WindowsProtect v0.4 - DeviceHost + MeshCentral telemetry test\n");
     Console.Write("Person/device owner name: "); var person=Console.ReadLine(); if(String.IsNullOrWhiteSpace(person)) person="Test User";
     Console.Write("Device label [Kamatera Test]: "); var label=Console.ReadLine(); if(String.IsNullOrWhiteSpace(label)) label="Kamatera Test";
     Console.Write("DEVICE_ENROLLMENT_KEY: "); var key=Console.ReadLine();
@@ -73,11 +73,13 @@ class WindowsProtectTest {
       var firewall=BoolPS("((Get-NetFirewallProfile -ErrorAction SilentlyContinue | Where-Object {$_.Enabled -eq $false}).Count -eq 0)");
       var smart=PS("(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer' -Name SmartScreenEnabled -ErrorAction SilentlyContinue).SmartScreenEnabled");
       var smartOn=!smart.Equals("Off",StringComparison.OrdinalIgnoreCase) && smart!="";
+      var meshRunning=BoolPS("((Get-Service -Name 'Mesh Agent','meshagent' -ErrorAction SilentlyContinue | Where-Object {$_.Status -eq 'Running'}).Count -gt 0)");
+      var meshVersion=PS("$s=Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {$_.Name -in @('Mesh Agent','meshagent')} | Select-Object -First 1; if($s){$p=$s.PathName.Trim(); if($p.StartsWith('\\\"')){$p=$p.Split('\\\"')[1]}else{$i=$p.ToLower().IndexOf('.exe'); if($i -ge 0){$p=$p.Substring(0,$i+4)}}; if(Test-Path $p){(Get-Item $p).VersionInfo.FileVersion}}");
       var tools=RemoteTools();
       var arr=new StringBuilder("["); for(int i=0;i<tools.Count;i++){if(i>0)arr.Append(",");arr.Append("\"").Append(Esc(tools[i])).Append("\"");} arr.Append("]");
       var posture=(!defender||!firewall||!smartOn||tools.Count>0)?"warning":"healthy";
       var rdRunning=Process.GetProcessesByName("rustdesk").Length>0;
-      var hb="{\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"protected\",\"os_version\":\""+Esc(os)+"\",\"agent_version\":\"0.3.1-test\",\"defender_enabled\":"+(defender?"true":"false")+",\"firewall_enabled\":"+(firewall?"true":"false")+",\"smartscreen_enabled\":"+(smartOn?"true":"false")+",\"rustdesk_running\":"+(rdRunning?"true":"false")+",\"rustdesk_version\":\""+Esc(RustDeskVersion())+"\",\"rustdesk_service_running\":false,\"temporary_support_enabled\":false,\"installed_apps_count\":"+InstalledCount()+",\"remote_tools_detected\":"+arr+",\"security_posture\":\""+posture+"\"}";
+      var hb="{\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"protected\",\"os_version\":\""+Esc(os)+"\",\"agent_version\":\"0.4.0-test\",\"defender_enabled\":"+(defender?"true":"false")+",\"firewall_enabled\":"+(firewall?"true":"false")+",\"smartscreen_enabled\":"+(smartOn?"true":"false")+",\"rustdesk_running\":"+(rdRunning?"true":"false")+",\"rustdesk_version\":\""+Esc(RustDeskVersion())+"\",\"rustdesk_service_running\":false,\"temporary_support_enabled\":false,\"installed_apps_count\":"+InstalledCount()+",\"remote_tools_detected\":"+arr+",\"security_posture\":\""+posture+"\"}";
       using(var wc=new WebClient()){wc.Headers[HttpRequestHeader.ContentType]="application/json";wc.Headers.Add("x-device-token",token);wc.UploadString(BaseUrl+"/api/heartbeat","POST",hb);}
 
       var data=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"WindowsProtect");
