@@ -17,8 +17,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.4.0")]
-[assembly: AssemblyFileVersion("0.5.4.0")]
+[assembly: AssemblyVersion("0.5.5.0")]
+[assembly: AssemblyFileVersion("0.5.5.0")]
 
 public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
@@ -57,14 +57,56 @@ public class WindowsProtectSetup : Form {
   [DllImport("advapi32.dll", EntryPoint="CredWriteW", CharSet=CharSet.Unicode, SetLastError=true)]
   static extern bool CredWrite([In] ref CREDENTIAL userCredential, [In] uint flags);
 
+  [DllImport("advapi32.dll", EntryPoint="LogonUserW", CharSet=CharSet.Unicode, ExactSpelling=true, SetLastError=true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  static extern bool LogonUser(string username,string domain,string password,int logonType,int provider,out IntPtr token);
+
+  [DllImport("kernel32.dll", SetLastError=true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  static extern bool CloseHandle(IntPtr handle);
+
+  // An actual Windows logon check, not a check that the field contains text.
+  // INTERACTIVE authenticates now; NEW_CREDENTIALS would accept unchecked passwords.
+  static void ValidateWindowsCredential(string username,string password){
+    if(String.IsNullOrWhiteSpace(username) || String.IsNullOrWhiteSpace(password) ||
+       username.IndexOf('\0')>=0 || password.IndexOf('\0')>=0)
+      throw new Win32Exception(1326,"Windows did not accept this username or password. Use your Windows password, not your PIN.");
+    var name=username.Trim();
+    string domain=".";
+    var separator=name.IndexOf('\\');
+    if(separator>=0){
+      domain=name.Substring(0,separator);
+      name=name.Substring(separator+1);
+      if(String.IsNullOrWhiteSpace(domain) || String.IsNullOrWhiteSpace(name) || name.IndexOf('\\')>=0)
+        throw new Win32Exception(1326,"Enter a Windows username, PC\\username, or account email.");
+    }else if(name.IndexOf('@')>=0){
+      domain=null; // Windows UPN format.
+    }
+    IntPtr token=IntPtr.Zero;
+    try{
+      if(!LogonUser(name,domain,password,2,0,out token)){
+        var error=Marshal.GetLastWin32Error();
+        string message="Windows did not accept this username or password. Use your Windows password, not your PIN.";
+        if(error==1909) message="This Windows account is locked. Unlock it before trying again.";
+        else if(error==1331) message="This Windows account is disabled.";
+        else if(error==1330 || error==1907) message="Change this Windows account's password before continuing.";
+        else if(error==1385) message="This Windows account is not allowed to sign in to this PC.";
+        else if(error!=1326) message="Windows could not verify this account (error "+error+"). Check the account and try again.";
+        throw new Win32Exception(error,message);
+      }
+    }finally{
+      if(token!=IntPtr.Zero) CloseHandle(token);
+    }
+  }
+
   public WindowsProtectSetup(){
     Text="WindowsProtect";
     AutoScaleDimensions=new SizeF(96,96);
     AutoScaleMode=AutoScaleMode.Dpi;
     ClientSize=new Size(600,704);
     StartPosition=FormStartPosition.CenterScreen;
-    BackColor=Color.FromArgb(12,17,27);
-    ForeColor=Color.FromArgb(234,240,249);
+    BackColor=Color.White;
+    ForeColor=Color.FromArgb(28,33,40);
     Font=new Font("Segoe UI",10);
     FormBorderStyle=FormBorderStyle.FixedDialog;
     MaximizeBox=false;
@@ -80,9 +122,9 @@ public class WindowsProtectSetup : Form {
     scroll.Controls.Add(body);
     Controls.Add(scroll);
 
-    AddRow(body,TextLabel("WINDOWSPROTECT",9,Color.FromArgb(111,170,255),FontStyle.Bold),0,10);
+    AddRow(body,TextLabel("WINDOWSPROTECT",9,Color.FromArgb(72,80,92),FontStyle.Bold),0,10);
     AddRow(body,TextLabel("A safer PC. Peace of mind.",22,ForeColor,FontStyle.Bold),0,8);
-    AddRow(body,TextLabel("Block known scam remote-access tools and keep trusted support available.",10,Color.FromArgb(160,176,197)),0,14);
+    AddRow(body,TextLabel("Block known scam remote-access tools and keep trusted support available.",10,Color.FromArgb(96,104,115)),0,14);
 
     var identity=Section("01  /  THIS PC");
     Configure(ownerBox,"e.g. Mum"); Configure(labelBox,"e.g. Living room laptop");
@@ -91,14 +133,14 @@ public class WindowsProtectSetup : Form {
 
     var enrollment=Section("02  /  ONE-TIME SETUP CODE");
     Configure(codeBox,"XXXX-XXXX-XXXX"); AddRow(enrollment,codeBox,0,6);
-    AddRow(enrollment,TextLabel("Needed for a new PC. Updates keep your existing registration.",9,Color.FromArgb(142,159,183)),0,0);
+    AddRow(enrollment,TextLabel("Needed for a new PC. Updates keep your existing registration.",9,Color.FromArgb(100,108,120)),0,0);
     AddRow(body,enrollment,0,10);
 
     var credential=Section("03  /  WINDOWS ACCOUNT  ·  REQUIRED");
-    Configure(userBox,"Username"); userBox.Text=Environment.UserName;
+    Configure(userBox,"Username"); userBox.Text=Environment.UserDomainName+"\\"+Environment.UserName;
     Configure(passBox,""); passBox.UseSystemPasswordChar=true;
     AddRow(credential,FieldPair("Windows username",userBox,"Windows password",passBox),0,8);
-    credentialHint=TextLabel("Use your Windows password, not your PIN. Stored in this Windows account's Credential Manager; never uploaded.",9,Color.FromArgb(142,159,183));
+    credentialHint=TextLabel("Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.",9,Color.FromArgb(100,108,120));
     AddRow(credential,credentialHint,0,0);
     AddRow(body,credential,0,0);
 
@@ -109,11 +151,11 @@ public class WindowsProtectSetup : Form {
     installButton.Text="Protect this PC";
     installButton.Dock=DockStyle.Top; installButton.Height=46;
     installButton.FlatStyle=FlatStyle.Flat;
-    installButton.BackColor=Color.FromArgb(47,112,235);
+    installButton.BackColor=Color.FromArgb(32,38,46);
     installButton.ForeColor=Color.White;
     installButton.Font=new Font("Segoe UI",11,FontStyle.Bold);
     installButton.FlatAppearance.BorderSize=0;
-    installButton.FlatAppearance.MouseOverBackColor=Color.FromArgb(62,129,248);
+    installButton.FlatAppearance.MouseOverBackColor=Color.FromArgb(48,56,67);
     installButton.Cursor=Cursors.Hand;
     installButton.Click+=async (sender,e)=>await InstallAsync();
     AddRow(footer,installButton,0,8);
@@ -122,9 +164,9 @@ public class WindowsProtectSetup : Form {
     progress.Dock=DockStyle.Top; progress.Height=5;
     progress.Style=ProgressBarStyle.Marquee; progress.Visible=false;
     AddRow(footer,progress,0,4);
-    status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(142,159,183));
+    status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(100,108,120));
     AddRow(footer,status,0,0);
-    AddRow(footer,TextLabel("TEST BUILD  /  0.5.4",8,Color.FromArgb(105,123,148)),4,0);
+    AddRow(footer,TextLabel("TEST BUILD  /  0.5.5",8,Color.FromArgb(120,127,138)),4,0);
 
     try{
       var tokenPath=Path.Combine(DataDir,"device.token");
@@ -149,9 +191,9 @@ public class WindowsProtectSetup : Form {
 
   static TableLayoutPanel Section(string title){
     var section=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=1,RowCount=0,
-      Padding=new Padding(16,12,16,12),BackColor=Color.FromArgb(20,28,42)};
+      Padding=new Padding(16,12,16,12),BackColor=Color.FromArgb(247,248,250)};
     section.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-    AddRow(section,TextLabel(title,9,Color.FromArgb(111,170,255),FontStyle.Bold),0,12);
+    AddRow(section,TextLabel(title,9,Color.FromArgb(72,80,92),FontStyle.Bold),0,12);
     return section;
   }
 
@@ -161,8 +203,8 @@ public class WindowsProtectSetup : Form {
     fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
     fields.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     fields.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-    var leftLabel=TextLabel(leftTitle,9,Color.FromArgb(177,191,211));
-    var rightLabel=TextLabel(rightTitle,9,Color.FromArgb(177,191,211));
+    var leftLabel=TextLabel(leftTitle,9,Color.FromArgb(64,72,84));
+    var rightLabel=TextLabel(rightTitle,9,Color.FromArgb(64,72,84));
     leftLabel.Margin=new Padding(0,0,10,5); rightLabel.Margin=new Padding(10,0,0,5);
     left.Margin=new Padding(0,0,10,0); right.Margin=new Padding(10,0,0,0);
     fields.Controls.Add(leftLabel,0,0); fields.Controls.Add(rightLabel,1,0);
@@ -181,7 +223,7 @@ public class WindowsProtectSetup : Form {
 
   void Configure(TextBox box,string placeholder){
     box.Dock=DockStyle.Top; box.Font=new Font("Segoe UI",11);
-    box.BackColor=Color.FromArgb(12,19,31); box.ForeColor=Color.FromArgb(234,240,249);
+    box.BackColor=Color.White; box.ForeColor=Color.FromArgb(28,33,40);
     box.BorderStyle=BorderStyle.FixedSingle;
     box.HandleCreated+=(sender,e)=>SendMessage(box.Handle,0x1501,IntPtr.Zero,placeholder);
   }
@@ -229,6 +271,21 @@ public class WindowsProtectSetup : Form {
       SetStatus("The Windows password is too long to store securely."); passBox.Focus(); return;
     }
 
+    // Reject a bad password BEFORE saving it, redeeming a code or changing services.
+    SetStatus("Verifying Windows account...");
+    try{
+      ValidateWindowsCredential(userBox.Text.Trim(),passBox.Text);
+      credentialHint.Text="Windows password verified on this PC. Stored locally; never uploaded.";
+      credentialHint.ForeColor=Color.FromArgb(100,108,120);
+    }catch(Win32Exception ex){
+      SetStatus("Windows account verification failed.");
+      credentialHint.Text=ex.Message;
+      credentialHint.ForeColor=Color.FromArgb(153,43,43);
+      passBox.Text="";
+      passBox.Focus();
+      return;
+    }
+
     installing=true;
     ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=userBox.Enabled=passBox.Enabled=false;
     installButton.Enabled=false; progress.Visible=true;
@@ -247,7 +304,7 @@ public class WindowsProtectSetup : Form {
         if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
 
         SetStatus("Registering this PC...");
-        var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.4-test\",\"remote_access_provider\":\"meshcentral\"}";
+        var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.5-test\",\"remote_access_provider\":\"meshcentral\"}";
         var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
         var token=JsonValue(enrolled,"device_token");
         if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");

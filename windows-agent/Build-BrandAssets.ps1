@@ -11,7 +11,7 @@ $shield = [Drawing.Point[]]@(
   (New-Object Drawing.Point 32,61), (New-Object Drawing.Point 19,52),
   (New-Object Drawing.Point 10,39), (New-Object Drawing.Point 6,13)
 )
-$brush = New-Object Drawing.SolidBrush ([Drawing.Color]::FromArgb(47,112,235))
+$brush = New-Object Drawing.SolidBrush ([Drawing.Color]::FromArgb(32,38,46))
 $g.FillPolygon($brush,$shield)
 $pen = New-Object Drawing.Pen ([Drawing.Color]::White),5
 $pen.StartCap = 'Round'; $pen.EndCap = 'Round'; $pen.LineJoin = 'Round'

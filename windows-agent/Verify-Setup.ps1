@@ -39,7 +39,45 @@ try {
   (Field 'userBox').Text = ' '
   $form.GetType().GetMethod('InstallAsync',$flags).Invoke($form,@()).GetAwaiter().GetResult()
   Check (-not (Field 'installing')) 'Blank username started installation.'
-  (Field 'userBox').Text = [Environment]::UserName
+  # Create an isolated throwaway Windows account on this disposable CI runner.
+  # Use Windows authentication itself to verify the correct password and reject
+  # an incorrect one; no real user account or password is used in this test.
+  $testUser = 'wpv' + [Guid]::NewGuid().ToString('N').Substring(0,12)
+  $testPassword = 'Wp!' + [Guid]::NewGuid().ToString('N') + '9a'
+  $validate = $form.GetType().GetMethod('ValidateWindowsCredential',[Reflection.BindingFlags]'Static,NonPublic')
+  $created = $false
+  try {
+    $securePassword = ConvertTo-SecureString $testPassword -AsPlainText -Force
+    New-LocalUser -Name $testUser -Password $securePassword -AccountNeverExpires | Out-Null
+    $created = $true
+    $usersGroup = Get-LocalGroup -SID 'S-1-5-32-545'
+    Add-LocalGroupMember -Group $usersGroup -Member $testUser
+    foreach ($username in @($testUser,('.\' + $testUser),([Environment]::MachineName + '\' + $testUser))) {
+      $validate.Invoke($null,@($username,$testPassword))
+    }
+    $credentialBefore = (& cmdkey.exe /list:WindowsProtect/LocalWindowsAccount | Out-String)
+    $tokenBefore = Test-Path 'C:\ProgramData\WindowsProtect\device.token'
+    (Field 'userBox').Text = '.\' + $testUser
+    (Field 'passBox').Text = 'Wrong!' + [Guid]::NewGuid().ToString('N')
+    $form.GetType().GetMethod('InstallAsync',$flags).Invoke($form,@()).GetAwaiter().GetResult()
+    Check ((Field 'status').Text -eq 'Windows account verification failed.') 'Wrong Windows password was accepted.'
+    Check ((Field 'credentialHint').Text -like 'Windows did not accept*') 'Authentication failure did not explain the rejection.'
+    Check ((Field 'passBox').Text -eq '') 'Rejected password was not cleared.'
+    Check (-not (Field 'installing')) 'Wrong password started installation.'
+    Check ((Field 'installButton').Enabled) 'Cannot retry after an incorrect password.'
+    Check ((Test-Path 'C:\ProgramData\WindowsProtect\device.token') -eq $tokenBefore) 'Invalid password changed enrollment state.'
+    Check ((& cmdkey.exe /list:WindowsProtect/LocalWindowsAccount | Out-String) -eq $credentialBefore) 'Invalid password was stored.'
+    # A failed attempt must not break validation of the correct password.
+    $validate.Invoke($null,@(('.\' + $testUser),$testPassword))
+    Write-Output 'Real Windows authentication: correct password accepted; wrong password blocked before enrollment or credential storage.'
+  } finally {
+    if ($created) { Remove-LocalUser -Name $testUser }
+    $testPassword = $null
+    if ($securePassword) { $securePassword.Dispose() }
+  }
+  (Field 'credentialHint').Text = 'Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.'
+  (Field 'credentialHint').ForeColor = [Drawing.Color]::FromArgb(100,108,120)
+  (Field 'userBox').Text = [Environment]::UserDomainName + '\' + [Environment]::UserName
   (Field 'passBox').Text = ''
   (Field 'ownerBox').Text = ''; (Field 'labelBox').Text = ''; (Field 'codeBox').Text = ''
   (Field 'status').Text = 'Ready to protect this PC.'
