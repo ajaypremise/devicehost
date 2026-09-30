@@ -63,8 +63,11 @@ export function sendMeshCentral(command) {
     });
 
     ws.on("error", (error) => finish(error));
-    ws.on("close", () => {
-      if (!settled) finish(null, { ok: true });
+    ws.on("close", (code, reason) => {
+      if (!settled) {
+        const why = String(reason || "").trim();
+        finish(new Error("MeshCentral closed the connection before confirming the action" + (why ? ": " + why : "") + " (code " + code + ")."));
+      }
     });
   });
 }
