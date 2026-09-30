@@ -157,8 +157,9 @@ public class WindowsProtectSetup : Form {
       var protectedBytes=ProtectedData.Protect(Encoding.UTF8.GetBytes(token),null,DataProtectionScope.LocalMachine);
       File.WriteAllText(Path.Combine(DataDir,"device.token"),Convert.ToBase64String(protectedBytes));
 
-      SetStatus("Installing WindowsProtect service...");
+      SetStatus("Preparing WindowsProtect service...");
       Directory.CreateDirectory(InstallDir);
+      StopExistingService();
       ExtractEmbeddedService(ServiceExe);
 
       var meshReady=MeshReady();
@@ -243,13 +244,35 @@ public class WindowsProtectSetup : Form {
     }
   }
 
-  static void InstallOrUpdateService(){
+  static void StopExistingService(){
     try{
       using(var sc=new ServiceController("DeviceSupportHost")){
         var x=sc.Status;
-        if(x!=ServiceControllerStatus.Stopped){ sc.Stop(); sc.WaitForStatus(ServiceControllerStatus.Stopped,TimeSpan.FromSeconds(15)); }
+        if(x!=ServiceControllerStatus.Stopped){
+          sc.Stop();
+          sc.WaitForStatus(ServiceControllerStatus.Stopped,TimeSpan.FromSeconds(20));
+        }
       }
-    }catch{}
+    }catch(InvalidOperationException){
+      // Service does not exist yet.
+    }
+
+    for(int i=0;i<20;i++){
+      try{
+        using(var fs=new FileStream(ServiceExe,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None)){ }
+        return;
+      }catch(IOException){
+        System.Threading.Thread.Sleep(500);
+      }catch(UnauthorizedAccessException){
+        System.Threading.Thread.Sleep(500);
+      }
+    }
+
+    throw new IOException("WindowsProtect service is still using its executable. Please wait a few seconds and try again.");
+  }
+
+  static void InstallOrUpdateService(){
+    StopExistingService();
 
     RunSc("delete DeviceSupportHost");
     System.Threading.Thread.Sleep(800);
