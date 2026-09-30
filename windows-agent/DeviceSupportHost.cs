@@ -55,8 +55,15 @@ public sealed class DeviceSupportHost : ServiceBase {
         using(var k=Registry.LocalMachine.OpenSubKey(@"SYSTEM\\CurrentControlSet\\Services\\"+serviceName)){
           if(k==null) continue;
           var image=(k.GetValue("ImagePath") as string)??"";
-          image=image.Trim().Trim('"');
-          var exe=image.Split(new[]{"\" "},StringSplitOptions.None)[0].Trim('"');
+          image=image.Trim();
+          string exe=image;
+          if(image.StartsWith("\"")){
+            var end=image.IndexOf("\"",1);
+            if(end>1) exe=image.Substring(1,end-1);
+          }else{
+            var end=image.IndexOf(".exe",StringComparison.OrdinalIgnoreCase);
+            if(end>=0) exe=image.Substring(0,end+4);
+          }
           if(File.Exists(exe)){
             var v=FileVersionInfo.GetVersionInfo(exe).FileVersion;
             if(!String.IsNullOrWhiteSpace(v)) return v;
