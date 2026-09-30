@@ -176,3 +176,24 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
   .stateGrid { grid-template-columns:1fr; }
   .detailActions { width:100%; justify-content:space-between; }
 }
+
+
+/* Dashboard filters */
+.filterBar { display:grid; grid-template-columns:minmax(260px,2fr) repeat(5,minmax(120px,1fr)) auto auto; gap:8px; align-items:center; margin:0 0 12px; }
+.filterBar input, .filterBar select { width:100%; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:10px 11px; outline:none; font:inherit; font-size:12px; }
+.filterBar input:focus, .filterBar select:focus { border-color:#42516a; }
+.filterBar button { border:1px solid var(--line); background:#f4f7fb; color:#0b0e13; border-radius:8px; padding:9px 12px; font-weight:750; cursor:pointer; }
+.tableFooter { display:flex; justify-content:space-between; align-items:center; gap:14px; margin-top:10px; color:var(--muted); font-size:11px; }
+
+@media (max-width: 1180px) {
+  .filterBar { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .filterBar input { grid-column:span 2; }
+}
+@media (max-width: 720px) {
+  .filterBar { grid-template-columns:1fr 1fr; }
+  .filterBar input { grid-column:1 / -1; }
+  .tableFooter { align-items:flex-start; flex-direction:column; }
+}
+@media (max-width: 480px) {
+  .filterBar { grid-template-columns:1fr; }
+}
