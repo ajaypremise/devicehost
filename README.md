@@ -37,3 +37,8 @@ MeshCentral is free/open-source and provides persistent managed devices, browser
 The final MeshCentral Windows agent is server-specific. It cannot be generated before the MeshCentral server and device group exist.
 
 Do not deploy an unverified WindowsProtect build to a family PC. First validate it on the disposable Kamatera test machine.
+
+
+## Installer configuration
+
+Set `MESHCENTRAL_AGENT_URL` in Vercel to the server-generated Windows x64 agent URL for the approved `WindowsProtect Family` MeshCentral device group. The one-time setup-code redemption endpoint returns this URL only after a valid short-lived code is redeemed.
