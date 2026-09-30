@@ -256,3 +256,8 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .remoteActionRow { display:grid; grid-template-columns:180px auto; gap:8px; align-items:center; }
 .remoteActionResult { margin-top:10px; color:#c7f6e3; font-size:11px; }
 @media (max-width: 560px) { .remoteActionRow { grid-template-columns:1fr; } }
+
+.remoteActionOptions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.remoteActionOptions label { display:grid; gap:6px; color:var(--muted); font-size:11px; }
+.remoteActionOptions select { width:100%; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:9px 10px; font-size:12px; }
+@media (max-width:560px) { .remoteActionOptions { grid-template-columns:1fr; } }
