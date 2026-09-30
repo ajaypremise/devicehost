@@ -113,13 +113,13 @@ try {
   try {
     $nonce = 'b' * 64
     $goodResponse = '{"desktop_verified":true,"command_dispatched":true,"challenge":"' + $nonce + '"}'
-    Check ($proofCheck.Invoke($null,@($goodResponse,$proofDir)) -eq '') 'Server acknowledgment alone activated protection.'
+    Check ($proofCheck.Invoke($null,@([string]$goodResponse,[string]$proofDir)) -eq '') 'Server acknowledgment alone activated protection.'
     [IO.File]::WriteAllText((Join-Path $proofDir ('support-' + $nonce + '.txt')),('c' * 64))
-    Check ($proofCheck.Invoke($null,@($goodResponse,$proofDir)) -eq '') 'Wrong local challenge activated protection.'
+    Check ($proofCheck.Invoke($null,@([string]$goodResponse,[string]$proofDir)) -eq '') 'Wrong local challenge activated protection.'
     [IO.File]::WriteAllText((Join-Path $proofDir ('support-' + $nonce + '.txt')),$nonce)
-    Check ($proofCheck.Invoke($null,@($goodResponse,$proofDir)) -eq $nonce) 'Fresh round-trip proof was rejected.'
+    Check ($proofCheck.Invoke($null,@([string]$goodResponse,[string]$proofDir)) -eq $nonce) 'Fresh round-trip proof was rejected.'
     $noDesktop = $goodResponse.Replace('"desktop_verified":true','"desktop_verified":false')
-    Check ($proofCheck.Invoke($null,@($noDesktop,$proofDir)) -eq '') 'A command without desktop verification activated protection.'
+    Check ($proofCheck.Invoke($null,@([string]$noDesktop,[string]$proofDir)) -eq '') 'A command without desktop verification activated protection.'
     Write-Output 'Support activation: pending retry remains pending; active repairs preserve protection; fresh desktop and local round-trip proof required.'
   } finally { Remove-Item $proofDir -Recurse -Force }
   (Field 'credentialHint').Text = 'Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.'
