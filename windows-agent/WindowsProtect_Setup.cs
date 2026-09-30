@@ -68,32 +68,31 @@ public class WindowsProtectSetup : Form {
     Font=new Font("Segoe UI",10);
     FormBorderStyle=FormBorderStyle.FixedDialog;
     MaximizeBox=false;
-    Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+    Icon=Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location);
 
     // A scrolling body keeps every field reachable on small screens and high DPI.
     var scroll=new Panel{Dock=DockStyle.Fill,AutoScroll=true};
     var body=new TableLayoutPanel{
       Dock=DockStyle.Top,AutoSize=true,ColumnCount=1,RowCount=0,
-      Padding=new Padding(28,24,28,20),BackColor=BackColor
+      Padding=new Padding(28,20,28,12),BackColor=BackColor
     };
     body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
     scroll.Controls.Add(body);
     Controls.Add(scroll);
 
     AddRow(body,TextLabel("WINDOWSPROTECT",9,Color.FromArgb(111,170,255),FontStyle.Bold),0,10);
-    AddRow(body,TextLabel("A safer PC. Peace of mind.",24,ForeColor,FontStyle.Bold),0,8);
-    AddRow(body,TextLabel("Block known scam remote-access tools and keep trusted support available.",10,Color.FromArgb(160,176,197)),0,20);
+    AddRow(body,TextLabel("A safer PC. Peace of mind.",22,ForeColor,FontStyle.Bold),0,8);
+    AddRow(body,TextLabel("Block known scam remote-access tools and keep trusted support available.",10,Color.FromArgb(160,176,197)),0,14);
 
     var identity=Section("01  /  THIS PC");
     Configure(ownerBox,"e.g. Mum"); Configure(labelBox,"e.g. Living room laptop");
     AddRow(identity,FieldPair("Owner / family member",ownerBox,"Device label",labelBox),0,0);
-    AddRow(body,identity,0,12);
+    AddRow(body,identity,0,10);
 
-    var enrollment=Section("02  /  ACTIVATE PROTECTION");
-    AddRow(enrollment,TextLabel("One-time setup code",9,Color.FromArgb(177,191,211)),0,5);
+    var enrollment=Section("02  /  ONE-TIME SETUP CODE");
     Configure(codeBox,"XXXX-XXXX-XXXX"); AddRow(enrollment,codeBox,0,6);
     AddRow(enrollment,TextLabel("Needed for a new PC. Updates keep your existing registration.",9,Color.FromArgb(142,159,183)),0,0);
-    AddRow(body,enrollment,0,12);
+    AddRow(body,enrollment,0,10);
 
     var credential=Section("03  /  WINDOWS ACCOUNT  ·  REQUIRED");
     Configure(userBox,"Username"); userBox.Text=Environment.UserName;
@@ -101,8 +100,12 @@ public class WindowsProtectSetup : Form {
     AddRow(credential,FieldPair("Windows username",userBox,"Windows password",passBox),0,8);
     credentialHint=TextLabel("Use your Windows password, not your PIN. Stored in this Windows account's Credential Manager; never uploaded.",9,Color.FromArgb(142,159,183));
     AddRow(credential,credentialHint,0,0);
-    AddRow(body,credential,0,18);
+    AddRow(body,credential,0,0);
 
+    var footer=new TableLayoutPanel{Dock=DockStyle.Bottom,Height=116,ColumnCount=1,RowCount=0,
+      Padding=new Padding(28,10,28,12),BackColor=BackColor};
+    footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+    Controls.Add(footer);
     installButton.Text="Protect this PC";
     installButton.Dock=DockStyle.Top; installButton.Height=46;
     installButton.FlatStyle=FlatStyle.Flat;
@@ -113,15 +116,15 @@ public class WindowsProtectSetup : Form {
     installButton.FlatAppearance.MouseOverBackColor=Color.FromArgb(62,129,248);
     installButton.Cursor=Cursors.Hand;
     installButton.Click+=async (sender,e)=>await InstallAsync();
-    AddRow(body,installButton,0,10);
+    AddRow(footer,installButton,0,8);
     AcceptButton=installButton;
 
     progress.Dock=DockStyle.Top; progress.Height=5;
     progress.Style=ProgressBarStyle.Marquee; progress.Visible=false;
-    AddRow(body,progress,0,8);
+    AddRow(footer,progress,0,4);
     status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(142,159,183));
-    AddRow(body,status,0,0);
-    AddRow(body,TextLabel("TEST BUILD  /  0.5.4",8,Color.FromArgb(105,123,148)),12,0);
+    AddRow(footer,status,0,0);
+    AddRow(footer,TextLabel("TEST BUILD  /  0.5.4",8,Color.FromArgb(105,123,148)),4,0);
 
     try{
       var tokenPath=Path.Combine(DataDir,"device.token");
@@ -146,7 +149,7 @@ public class WindowsProtectSetup : Form {
 
   static TableLayoutPanel Section(string title){
     var section=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=1,RowCount=0,
-      Padding=new Padding(16,14,16,14),BackColor=Color.FromArgb(20,28,42)};
+      Padding=new Padding(16,12,16,12),BackColor=Color.FromArgb(20,28,42)};
     section.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
     AddRow(section,TextLabel(title,9,Color.FromArgb(111,170,255),FontStyle.Bold),0,12);
     return section;

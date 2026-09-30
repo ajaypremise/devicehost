@@ -13,6 +13,9 @@ try {
   $form.Show()
   [Windows.Forms.Application]::DoEvents()
   $controls = @(Walk $form)
+  $button = Field 'installButton'
+  $buttonBounds = $form.RectangleToClient($button.RectangleToScreen($button.ClientRectangle))
+  Check ($form.ClientRectangle.Contains($buttonBounds)) 'Primary action is clipped or outside the window.'
   Check (@($controls | Where-Object { $_ -is [Windows.Forms.CheckBox] }).Count -eq 0) 'Installer still contains a checkbox.'
   Check (-not [bool]($controls | Where-Object { $_.Text -match 'MeshCentral|MeshControl' })) 'Internal provider name visible.'
   Check ((Field 'ownerBox').Text -eq '') 'Owner placeholder submitted as text.'
