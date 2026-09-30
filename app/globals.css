@@ -211,3 +211,19 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 520px) {
   .quickActions { grid-template-columns:1fr; }
 }
+
+
+.setupPanel { display:grid; grid-template-columns:minmax(260px,1.2fr) minmax(320px,1fr); gap:14px; align-items:center; border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:16px 18px; }
+.setupPanel > div > strong { font-size:13px; }
+.setupPanel > div > p { margin:5px 0 0; color:var(--muted); font-size:11px; line-height:1.5; }
+.setupPanel form { display:flex; gap:8px; }
+.setupPanel input { flex:1; min-width:0; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:10px 11px; }
+.setupPanel button { border:1px solid var(--line); background:#f4f7fb; color:#0b0e13; border-radius:8px; padding:9px 12px; font-weight:750; cursor:pointer; white-space:nowrap; }
+.setupPanel button:disabled { opacity:.6; cursor:default; }
+.setupCode { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid rgba(56,217,150,.28); background:rgba(56,217,150,.06); border-radius:10px; padding:11px 12px; }
+.setupCode code { font-size:18px; font-weight:800; letter-spacing:.08em; color:#c7f6e3; }
+.inlineError { grid-column:1 / -1; color:#ffb5ba; font-size:11px; }
+@media (max-width: 760px) {
+  .setupPanel { grid-template-columns:1fr; }
+  .setupPanel form { flex-direction:column; }
+}
