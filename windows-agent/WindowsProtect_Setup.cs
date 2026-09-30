@@ -425,7 +425,7 @@ public class WindowsProtectSetup : Form {
       }catch(WebException){ }
       if(clock.ElapsedMilliseconds<59000) await Task.Delay(1000);
     }
-    throw new TimeoutException("Secure support could not be verified. Retry the support check.");
+    throw new System.TimeoutException("Secure support could not be verified. Retry the support check.");
   }
 
   async Task CompleteProtectionActivation(){
@@ -445,7 +445,7 @@ public class WindowsProtectSetup : Form {
       }catch{}
       await Task.Delay(500);
     }
-    throw new TimeoutException("Protection was enabled, but final confirmation is still pending.");
+    throw new System.TimeoutException("Protection was enabled, but final confirmation is still pending.");
   }
 
   static async Task<string> PostJson(string url,string body,string enrollmentKey){
