@@ -50,8 +50,8 @@ public class WindowsProtectSetup : Form {
   static extern bool CredWrite([In] ref CREDENTIAL userCredential, [In] uint flags);
 
   public WindowsProtectSetup(){
-    Text="WindowsProtect Setup";
-    Width=590; Height=585;
+    Text="WindowsProtect";
+    Width=640; Height=620;
     StartPosition=FormStartPosition.CenterScreen;
     BackColor=Color.FromArgb(9,11,16);
     ForeColor=Color.White;
@@ -60,38 +60,38 @@ public class WindowsProtectSetup : Form {
     MaximizeBox=false;
 
     var title=new Label{Text="WindowsProtect",Left=28,Top=24,Width=500,Height=36,Font=new Font("Segoe UI Semibold",22),ForeColor=Color.White};
-    var sub=new Label{Text="Protect this PC and connect it to DeviceHost + MeshCentral.",Left=30,Top=64,Width=510,Height=42,ForeColor=Color.FromArgb(150,160,175)};
+    var sub=new Label{Text="Protect this PC from scam remote-access tools and keep secure support available.",Left=30,Top=64,Width=560,Height=42,ForeColor=Color.FromArgb(150,160,175)};
 
     AddLabel("Owner / family member",30,118); Configure(ownerBox,30,142,"e.g. Mum");
     AddLabel("Device label",30,188); Configure(labelBox,30,212,"e.g. Living room laptop");
     AddLabel("One-time setup code (new PC only)",30,258); Configure(codeBox,30,282,"XXXX-XXXX-XXXX");
 
-    saveCredential.Text="Store this Windows account credential locally (optional)";
+    saveCredential.Text="Secure support credential (required for protected support access)";
     saveCredential.Left=30; saveCredential.Top=338; saveCredential.Width=510; saveCredential.ForeColor=Color.FromArgb(210,215,225);
-    saveCredential.CheckedChanged+=(s,e)=>{ userBox.Enabled=passBox.Enabled=saveCredential.Checked; };
+    saveCredential.Checked=true; saveCredential.Enabled=false; userBox.Enabled=passBox.Enabled=true;
 
     AddLabel("Windows username",30,372); Configure(userBox,30,396,Environment.UserName);
     AddLabel("Windows password",300,372); Configure(passBox,300,396,"");
     passBox.UseSystemPasswordChar=true;
-    userBox.Enabled=passBox.Enabled=false;
+    userBox.Enabled=passBox.Enabled=true;
 
     var note=new Label{
-      Text="Password stays only in Windows Credential Manager on this PC. It is never sent to DeviceHost, MeshCentral, GitHub or logs.",
+      Text="This credential stays only in Windows Credential Manager on this PC and is never uploaded.",
       Left=30,Top=435,Width=510,Height=38,ForeColor=Color.FromArgb(140,150,165),Font=new Font("Segoe UI",8.5f)
     };
 
-    installButton.Text="Install WindowsProtect";
-    installButton.Left=30; installButton.Top=482; installButton.Width=220; installButton.Height=38;
+    installButton.Text="Protect this PC";
+    installButton.Left=30; installButton.Top=482; installButton.Width=510; installButton.Height=38;
     installButton.FlatStyle=FlatStyle.Flat;
-    installButton.BackColor=Color.White;
-    installButton.ForeColor=Color.FromArgb(10,12,16);
+    installButton.BackColor=Color.FromArgb(37,99,235);
+    installButton.ForeColor=Color.White;
     installButton.FlatAppearance.BorderSize=0;
     installButton.Click+=async (s,e)=>await InstallAsync();
 
-    progress.Left=270; progress.Top=489; progress.Width=270; progress.Height=22;
+    progress.Left=30; progress.Top=532; progress.Width=510; progress.Height=22;
     progress.Style=ProgressBarStyle.Marquee; progress.Visible=false;
 
-    status.Left=30; status.Top=528; status.Width=510; status.Height=28;
+    status.Left=30; status.Top=560; status.Width=510; status.Height=28;
     status.ForeColor=Color.FromArgb(160,170,185);
 
     Controls.AddRange(new Control[]{title,sub,ownerBox,labelBox,codeBox,saveCredential,userBox,passBox,note,installButton,progress,status});
@@ -162,7 +162,7 @@ public class WindowsProtectSetup : Form {
         meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
         if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
 
-        SetStatus("Enrolling this PC in DeviceHost...");
+        SetStatus("Registering this PC...");
         var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.3-test\",\"remote_access_provider\":\"meshcentral\"}";
         var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
         var token=JsonValue(enrolled,"device_token");
@@ -175,7 +175,7 @@ public class WindowsProtectSetup : Form {
         SetStatus("Existing WindowsProtect enrollment found. Updating this PC...");
       }
 
-      SetStatus("Preparing WindowsProtect service...");
+      SetStatus("Preparing protection services...");
       Directory.CreateDirectory(InstallDir);
       StopExistingService();
       ExtractEmbeddedService(ServiceExe);
@@ -184,7 +184,7 @@ public class WindowsProtectSetup : Form {
       if(String.IsNullOrWhiteSpace(meshAgentUrl)) meshAgentUrl="https://34-69-184-103.sslip.io/meshagents?id=4&meshid=gY1Com9g9071ieNPRic8EHP2irnFHZxy1gpsoBn8opAi4guIJ$gAQj$INq8mbEjL&installflags=0";
       var meshReady=MeshReady();
       if(!meshReady && !String.IsNullOrWhiteSpace(meshAgentUrl)){
-        SetStatus("Installing approved MeshCentral agent...");
+        SetStatus("Installing secure support component...");
         var temp=Path.Combine(Path.GetTempPath(),"WindowsProtect-MeshAgent.exe");
         using(var wc=new WebClient()) await wc.DownloadFileTaskAsync(new Uri(meshAgentUrl),temp);
         await Run(temp,"-fullinstall",90000);
@@ -194,7 +194,7 @@ public class WindowsProtectSetup : Form {
       }
 
       if(!meshReady){
-        throw new Exception("MeshCentral agent is not connected yet. WindowsProtect protection was not activated so you cannot lose your current support route.");
+        throw new Exception("The secure support connection is not ready yet. WindowsProtect was not activated so your current support route is preserved.");
       }
 
       InstallOrUpdateService();
@@ -210,7 +210,7 @@ public class WindowsProtectSetup : Form {
 
       progress.Visible=false;
       SetStatus("WindowsProtect installed successfully.");
-      MessageBox.Show("WindowsProtect is installed. DeviceHost monitoring and approved MeshCentral access are active.","WindowsProtect",MessageBoxButtons.OK,MessageBoxIcon.Information);
+      MessageBox.Show("WindowsProtect is active. Protection, monitoring and secure support are ready.","WindowsProtect",MessageBoxButtons.OK,MessageBoxIcon.Information);
       Close();
     }catch(WebException ex){
       progress.Visible=false;
