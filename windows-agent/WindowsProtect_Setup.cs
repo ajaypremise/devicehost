@@ -63,7 +63,7 @@ public class WindowsProtectSetup : Form {
 
     AddLabel("Owner / family member",30,118); Configure(ownerBox,30,142,"e.g. Mum");
     AddLabel("Device label",30,188); Configure(labelBox,30,212,"e.g. Living room laptop");
-    AddLabel("One-time setup code",30,258); Configure(codeBox,30,282,"XXXX-XXXX-XXXX");
+    AddLabel("One-time setup code (new PC only)",30,258); Configure(codeBox,30,282,"XXXX-XXXX-XXXX");
 
     saveCredential.Text="Store this Windows account credential locally (optional)";
     saveCredential.Left=30; saveCredential.Top=338; saveCredential.Width=510; saveCredential.ForeColor=Color.FromArgb(210,215,225);
@@ -94,6 +94,15 @@ public class WindowsProtectSetup : Form {
     status.ForeColor=Color.FromArgb(160,170,185);
 
     Controls.AddRange(new Control[]{title,sub,ownerBox,labelBox,codeBox,saveCredential,userBox,passBox,note,installButton,progress,status});
+    try{
+      var tokenPath=Path.Combine(DataDir,"device.token");
+      if(File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20){
+        codeBox.Enabled=false;
+        codeBox.Text="Already enrolled — no code needed";
+        installButton.Text="Update / Repair WindowsProtect";
+        status.Text="Existing WindowsProtect enrollment detected.";
+      }
+    }catch{}
   }
 
   void AddLabel(string text,int x,int y){
