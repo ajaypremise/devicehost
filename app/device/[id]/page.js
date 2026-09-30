@@ -48,9 +48,10 @@ function Row({ label, children }) {
 
 export default async function DevicePage({ params }) {
   const { id } = await params;
-  const [devices, events] = await Promise.all([
+  const [devices, events, inventory] = await Promise.all([
     supabaseGet(`devices?id=eq.${encodeURIComponent(id)}&select=*&limit=1`),
     supabaseGet(`security_events?device_id=eq.${encodeURIComponent(id)}&select=id,event_type,severity,title,details,created_at&order=created_at.desc&limit=20`),
+    supabaseGet(`software_inventory?device_id=eq.${encodeURIComponent(id)}&select=id,app_name,app_version,publisher,is_remote_access,last_seen_at&order=is_remote_access.desc,app_name.asc&limit=250`),
   ]);
 
   const device = devices[0];
@@ -127,6 +128,29 @@ export default async function DevicePage({ params }) {
           <strong>{tools.length ? "Unauthorized remote-access software detected" : "No unauthorized remote tools reported"}</strong>
           {tools.length ? <p>{tools.join(", ")}</p> : <p>Approved MeshCentral access is tracked separately and is not treated as an unauthorized tool.</p>}
         </div>
+      </section>
+
+      <section className="section">
+        <div className="sectionHeading"><h2>Installed applications</h2><span>{inventory.length} reported</span></div>
+        {inventory.length === 0 ? (
+          <div className="empty compact"><p>Software inventory has not been uploaded yet.</p></div>
+        ) : (
+          <div className="inventoryTableWrap">
+            <table className="inventoryTable">
+              <thead><tr><th>Application</th><th>Version</th><th>Publisher</th><th>Remote access</th></tr></thead>
+              <tbody>
+                {inventory.map((app) => (
+                  <tr key={app.id}>
+                    <td>{app.app_name}</td>
+                    <td>{app.app_version || "—"}</td>
+                    <td>{app.publisher || "—"}</td>
+                    <td>{app.is_remote_access ? <span className="health bad">Unauthorized</span> : <span className="health good">No</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="section">
