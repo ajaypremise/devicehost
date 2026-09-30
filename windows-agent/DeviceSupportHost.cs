@@ -12,7 +12,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.0-test";
+  const string AgentVersion="0.5.1-test";
 
   static readonly string[] BlockedProcessNames = new[]{
     "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
@@ -32,6 +32,7 @@ public sealed class DeviceSupportHost : ServiceBase {
   };
 
   readonly Dictionary<string,DateTime> lastBlocked = new Dictionary<string,DateTime>(StringComparer.OrdinalIgnoreCase);
+  DateTime lastInventoryUpload=DateTime.MinValue;
   Timer timer;
 
   public DeviceSupportHost(){
@@ -57,6 +58,7 @@ public sealed class DeviceSupportHost : ServiceBase {
     try{
       BlockUnauthorizedRemoteTools();
       SendHeartbeat();
+      if((DateTime.UtcNow-lastInventoryUpload).TotalMinutes>=60){ SendInventory(); lastInventoryUpload=DateTime.UtcNow; }
     }catch(Exception ex){
       Log("Tick failed: "+ex.GetType().Name+" - "+ex.Message);
     }
@@ -170,6 +172,31 @@ public sealed class DeviceSupportHost : ServiceBase {
     return hits;
   }
 
+  static string InstalledAppsJson(){
+    var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var sb=new StringBuilder("[");
+    bool first=true;
+    foreach(var path in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){
+      using(var root=Registry.LocalMachine.OpenSubKey(path)){
+        if(root==null) continue;
+        foreach(var n in root.GetSubKeyNames()){
+          using(var k=root.OpenSubKey(n)){
+            var name=Convert.ToString(k.GetValue("DisplayName")??"").Trim();
+            if(String.IsNullOrWhiteSpace(name)||!seen.Add(name)) continue;
+            var version=Convert.ToString(k.GetValue("DisplayVersion")??"").Trim();
+            var publisher=Convert.ToString(k.GetValue("Publisher")??"").Trim();
+            bool remote=false;
+            foreach(var x in RemoteToolDisplayNames) if(name.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0){ remote=true; break; }
+            if(!first) sb.Append(","); first=false;
+            sb.Append("{\"app_name\":\"").Append(JsonEscape(name)).Append("\",\"app_version\":\"").Append(JsonEscape(version)).Append("\",\"publisher\":\"").Append(JsonEscape(publisher)).Append("\",\"is_remote_access\":").Append(remote?"true":"false").Append("}");
+          }
+        }
+      }
+    }
+    sb.Append("]");
+    return sb.ToString();
+  }
+
   static int InstalledCount(){
     var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     foreach(var path in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){
@@ -246,6 +273,22 @@ public sealed class DeviceSupportHost : ServiceBase {
         wc.UploadString(BaseUrl+"/api/events","POST",body);
       }
     }catch{}
+  }
+
+  static void SendInventory(){
+    try{
+      var token=ReadToken();
+      if(String.IsNullOrWhiteSpace(token)) return;
+      var body="{\"apps\":"+InstalledAppsJson()+"}";
+      using(var wc=new WebClient()){
+        wc.Headers[HttpRequestHeader.ContentType]="application/json";
+        wc.Headers.Add("x-device-token",token);
+        wc.UploadString(BaseUrl+"/api/inventory","POST",body);
+      }
+      Log("Software inventory uploaded.");
+    }catch(Exception ex){
+      Log("Inventory failed: "+ex.GetType().Name+" - "+ex.Message);
+    }
   }
 
   static void SendHeartbeat(){
