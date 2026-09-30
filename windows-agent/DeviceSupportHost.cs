@@ -12,7 +12,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.3-test";
+  const string AgentVersion="0.5.4-test";
 
   static readonly string[] BlockedProcessNames = new[]{
     "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",

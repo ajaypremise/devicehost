@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -13,6 +14,12 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
+[assembly: AssemblyTitle("WindowsProtect")]
+[assembly: AssemblyProduct("WindowsProtect")]
+[assembly: AssemblyDescription("Family PC protection and secure support setup")]
+[assembly: AssemblyVersion("0.5.4.0")]
+[assembly: AssemblyFileVersion("0.5.4.0")]
+
 public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
   const string InstallDir=@"C:\Program Files\Common Files\DeviceSupport";
@@ -25,7 +32,8 @@ public class WindowsProtectSetup : Form {
   TextBox codeBox=new TextBox();
   TextBox userBox=new TextBox();
   TextBox passBox=new TextBox();
-  CheckBox saveCredential=new CheckBox();
+  bool installing;
+  Label credentialHint=new Label();
   Button installButton=new Button();
   Label status=new Label();
   ProgressBar progress=new ProgressBar();
@@ -51,72 +59,128 @@ public class WindowsProtectSetup : Form {
 
   public WindowsProtectSetup(){
     Text="WindowsProtect";
-    Width=640; Height=620;
+    AutoScaleDimensions=new SizeF(96,96);
+    AutoScaleMode=AutoScaleMode.Dpi;
+    ClientSize=new Size(600,704);
     StartPosition=FormStartPosition.CenterScreen;
-    BackColor=Color.FromArgb(9,11,16);
-    ForeColor=Color.White;
+    BackColor=Color.FromArgb(12,17,27);
+    ForeColor=Color.FromArgb(234,240,249);
     Font=new Font("Segoe UI",10);
     FormBorderStyle=FormBorderStyle.FixedDialog;
     MaximizeBox=false;
+    Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
-    var title=new Label{Text="WindowsProtect",Left=28,Top=24,Width=500,Height=36,Font=new Font("Segoe UI Semibold",22),ForeColor=Color.White};
-    var sub=new Label{Text="Protect this PC from scam remote-access tools and keep secure support available.",Left=30,Top=64,Width=560,Height=42,ForeColor=Color.FromArgb(150,160,175)};
-
-    AddLabel("Owner / family member",30,118); Configure(ownerBox,30,142,"e.g. Mum");
-    AddLabel("Device label",30,188); Configure(labelBox,30,212,"e.g. Living room laptop");
-    AddLabel("One-time setup code (new PC only)",30,258); Configure(codeBox,30,282,"XXXX-XXXX-XXXX");
-
-    saveCredential.Text="Secure support credential (required for protected support access)";
-    saveCredential.Left=30; saveCredential.Top=338; saveCredential.Width=510; saveCredential.ForeColor=Color.FromArgb(210,215,225);
-    saveCredential.Checked=true; saveCredential.Enabled=false; userBox.Enabled=passBox.Enabled=true;
-
-    AddLabel("Windows username",30,372); Configure(userBox,30,396,Environment.UserName);
-    AddLabel("Windows password",300,372); Configure(passBox,300,396,"");
-    passBox.UseSystemPasswordChar=true;
-    userBox.Enabled=passBox.Enabled=true;
-
-    var note=new Label{
-      Text="This credential stays only in Windows Credential Manager on this PC and is never uploaded.",
-      Left=30,Top=435,Width=510,Height=38,ForeColor=Color.FromArgb(140,150,165),Font=new Font("Segoe UI",8.5f)
+    // A scrolling body keeps every field reachable on small screens and high DPI.
+    var scroll=new Panel{Dock=DockStyle.Fill,AutoScroll=true};
+    var body=new TableLayoutPanel{
+      Dock=DockStyle.Top,AutoSize=true,ColumnCount=1,RowCount=0,
+      Padding=new Padding(28,24,28,20),BackColor=BackColor
     };
+    body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+    scroll.Controls.Add(body);
+    Controls.Add(scroll);
+
+    AddRow(body,TextLabel("WINDOWSPROTECT",9,Color.FromArgb(111,170,255),FontStyle.Bold),0,10);
+    AddRow(body,TextLabel("A safer PC. Peace of mind.",24,ForeColor,FontStyle.Bold),0,8);
+    AddRow(body,TextLabel("Block known scam remote-access tools and keep trusted support available.",10,Color.FromArgb(160,176,197)),0,20);
+
+    var identity=Section("01  /  THIS PC");
+    Configure(ownerBox,"e.g. Mum"); Configure(labelBox,"e.g. Living room laptop");
+    AddRow(identity,FieldPair("Owner / family member",ownerBox,"Device label",labelBox),0,0);
+    AddRow(body,identity,0,12);
+
+    var enrollment=Section("02  /  ACTIVATE PROTECTION");
+    AddRow(enrollment,TextLabel("One-time setup code",9,Color.FromArgb(177,191,211)),0,5);
+    Configure(codeBox,"XXXX-XXXX-XXXX"); AddRow(enrollment,codeBox,0,6);
+    AddRow(enrollment,TextLabel("Needed for a new PC. Updates keep your existing registration.",9,Color.FromArgb(142,159,183)),0,0);
+    AddRow(body,enrollment,0,12);
+
+    var credential=Section("03  /  WINDOWS ACCOUNT  ·  REQUIRED");
+    Configure(userBox,"Username"); userBox.Text=Environment.UserName;
+    Configure(passBox,""); passBox.UseSystemPasswordChar=true;
+    AddRow(credential,FieldPair("Windows username",userBox,"Windows password",passBox),0,8);
+    credentialHint=TextLabel("Use your Windows password, not your PIN. Stored in this Windows account's Credential Manager; never uploaded.",9,Color.FromArgb(142,159,183));
+    AddRow(credential,credentialHint,0,0);
+    AddRow(body,credential,0,18);
 
     installButton.Text="Protect this PC";
-    installButton.Left=30; installButton.Top=482; installButton.Width=510; installButton.Height=38;
+    installButton.Dock=DockStyle.Top; installButton.Height=46;
     installButton.FlatStyle=FlatStyle.Flat;
-    installButton.BackColor=Color.FromArgb(37,99,235);
+    installButton.BackColor=Color.FromArgb(47,112,235);
     installButton.ForeColor=Color.White;
+    installButton.Font=new Font("Segoe UI",11,FontStyle.Bold);
     installButton.FlatAppearance.BorderSize=0;
-    installButton.Click+=async (s,e)=>await InstallAsync();
+    installButton.FlatAppearance.MouseOverBackColor=Color.FromArgb(62,129,248);
+    installButton.Cursor=Cursors.Hand;
+    installButton.Click+=async (sender,e)=>await InstallAsync();
+    AddRow(body,installButton,0,10);
+    AcceptButton=installButton;
 
-    progress.Left=30; progress.Top=532; progress.Width=510; progress.Height=22;
+    progress.Dock=DockStyle.Top; progress.Height=5;
     progress.Style=ProgressBarStyle.Marquee; progress.Visible=false;
+    AddRow(body,progress,0,8);
+    status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(142,159,183));
+    AddRow(body,status,0,0);
+    AddRow(body,TextLabel("TEST BUILD  /  0.5.4",8,Color.FromArgb(105,123,148)),12,0);
 
-    status.Left=30; status.Top=560; status.Width=510; status.Height=28;
-    status.ForeColor=Color.FromArgb(160,170,185);
-
-    Controls.AddRange(new Control[]{title,sub,ownerBox,labelBox,codeBox,saveCredential,userBox,passBox,note,installButton,progress,status});
     try{
       var tokenPath=Path.Combine(DataDir,"device.token");
       if(File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20){
-        codeBox.Enabled=false;
-        codeBox.Text="Already enrolled — no code needed";
-        installButton.Text="Update / Repair WindowsProtect";
-        status.Text="Existing WindowsProtect enrollment detected.";
+        ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=false;
+        codeBox.Text="Already registered";
+        installButton.Text="Update / repair protection";
+        status.Text="This PC is registered. No new setup code needed.";
       }
     }catch{}
+    FormClosing+=(sender,e)=>{ if(installing) e.Cancel=true; };
+    Shown+=(sender,e)=>{
+      var area=Screen.FromControl(this).WorkingArea;
+      if(Height>area.Height-32){ Height=Math.Max(300,area.Height-32); Top=area.Top+16; }
+    };
   }
 
-  void AddLabel(string text,int x,int y){
-    var l=new Label{Text=text,Left=x,Top=y,Width=250,Height=22,ForeColor=Color.FromArgb(170,180,195),Font=new Font("Segoe UI",9)};
-    Controls.Add(l);
+  static Label TextLabel(string text,float size,Color color,FontStyle style=FontStyle.Regular){
+    return new Label{Text=text,AutoSize=true,Dock=DockStyle.Top,
+      Font=new Font("Segoe UI",size,style),ForeColor=color,Margin=Padding.Empty};
   }
 
-  void Configure(TextBox box,int x,int y,string placeholder){
-    box.Left=x; box.Top=y; box.Width=(x<100?510:240); box.Height=30;
-    box.BackColor=Color.FromArgb(17,21,29); box.ForeColor=Color.White;
+  static TableLayoutPanel Section(string title){
+    var section=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=1,RowCount=0,
+      Padding=new Padding(16,14,16,14),BackColor=Color.FromArgb(20,28,42)};
+    section.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+    AddRow(section,TextLabel(title,9,Color.FromArgb(111,170,255),FontStyle.Bold),0,12);
+    return section;
+  }
+
+  static TableLayoutPanel FieldPair(string leftTitle,TextBox left,string rightTitle,TextBox right){
+    var fields=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=2,Margin=Padding.Empty};
+    fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+    fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+    fields.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+    fields.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+    var leftLabel=TextLabel(leftTitle,9,Color.FromArgb(177,191,211));
+    var rightLabel=TextLabel(rightTitle,9,Color.FromArgb(177,191,211));
+    leftLabel.Margin=new Padding(0,0,10,5); rightLabel.Margin=new Padding(10,0,0,5);
+    left.Margin=new Padding(0,0,10,0); right.Margin=new Padding(10,0,0,0);
+    fields.Controls.Add(leftLabel,0,0); fields.Controls.Add(rightLabel,1,0);
+    fields.Controls.Add(left,0,1); fields.Controls.Add(right,1,1);
+    return fields;
+  }
+
+  static void AddRow(TableLayoutPanel panel,Control control,int top,int bottom){
+    control.Margin=new Padding(0,top,0,bottom);
+    panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+    panel.Controls.Add(control,0,panel.RowCount++);
+  }
+
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+  static extern IntPtr SendMessage(IntPtr window,int message,IntPtr wParam,string lParam);
+
+  void Configure(TextBox box,string placeholder){
+    box.Dock=DockStyle.Top; box.Font=new Font("Segoe UI",11);
+    box.BackColor=Color.FromArgb(12,19,31); box.ForeColor=Color.FromArgb(234,240,249);
     box.BorderStyle=BorderStyle.FixedSingle;
-    box.Text=placeholder;
-    box.GotFocus+=(s,e)=>{ if(box.Text==placeholder) box.Text=""; };
+    box.HandleCreated+=(sender,e)=>SendMessage(box.Handle,0x1501,IntPtr.Zero,placeholder);
   }
 
   static string Esc(string s){ return (s??"").Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r"," ").Replace("\n"," "); }
@@ -138,6 +202,7 @@ public class WindowsProtectSetup : Form {
   }
 
   async Task InstallAsync(){
+    if(installing) return;
     if(!IsAdmin()){ RelaunchElevated(); return; }
 
     var owner=ownerBox.Text.Trim();
@@ -151,8 +216,24 @@ public class WindowsProtectSetup : Form {
       return;
     }
 
+    if(String.IsNullOrWhiteSpace(userBox.Text) || String.IsNullOrWhiteSpace(passBox.Text)){
+      SetStatus("Enter your Windows username and password to continue.");
+      if(String.IsNullOrWhiteSpace(userBox.Text)) userBox.Focus(); else passBox.Focus();
+      return;
+    }
+    // CredWrite's generic credential limit is 2560 bytes.
+    if(Encoding.Unicode.GetByteCount(passBox.Text)>2560){
+      SetStatus("The Windows password is too long to store securely."); passBox.Focus(); return;
+    }
+
+    installing=true;
+    ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=userBox.Enabled=passBox.Enabled=false;
     installButton.Enabled=false; progress.Visible=true;
+    bool completed=false;
     try{
+      SetStatus("Saving Windows credential locally...");
+      SaveCredential(userBox.Text.Trim(),passBox.Text);
+      passBox.Text="";
       ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
       string meshAgentUrl="";
       if(!alreadyEnrolled){
@@ -163,10 +244,10 @@ public class WindowsProtectSetup : Form {
         if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
 
         SetStatus("Registering this PC...");
-        var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.3-test\",\"remote_access_provider\":\"meshcentral\"}";
+        var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.4-test\",\"remote_access_provider\":\"meshcentral\"}";
         var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
         var token=JsonValue(enrolled,"device_token");
-        if(String.IsNullOrWhiteSpace(token)) throw new Exception("DeviceHost did not return a device token.");
+        if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
 
         Directory.CreateDirectory(DataDir);
         var protectedBytes=ProtectedData.Protect(Encoding.UTF8.GetBytes(token),null,DataProtectionScope.LocalMachine);
@@ -200,17 +281,16 @@ public class WindowsProtectSetup : Form {
       InstallOrUpdateService();
       HardenWindowsProtect();
 
-      if(saveCredential.Checked && !String.IsNullOrWhiteSpace(userBox.Text) && !String.IsNullOrWhiteSpace(passBox.Text)){
-        SetStatus("Saving optional Windows credential locally...");
-        SaveCredential(userBox.Text.Trim(),passBox.Text);
+      SetStatus("Finishing security checks...");
+      using(var service=new ServiceController("DeviceSupportHost")){
+        await Task.Run(()=>service.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(20)));
       }
 
-      SetStatus("Finishing security checks...");
-      await Task.Delay(7000);
-
+      completed=true;
       progress.Visible=false;
       SetStatus("WindowsProtect installed successfully.");
-      MessageBox.Show("WindowsProtect is active. Protection, monitoring and secure support are ready.","WindowsProtect",MessageBoxButtons.OK,MessageBoxIcon.Information);
+      installing=false;
+      MessageBox.Show(this,"WindowsProtect is installed and the protection service is running.","Setup complete",MessageBoxButtons.OK,MessageBoxIcon.Information);
       Close();
     }catch(WebException ex){
       progress.Visible=false;
@@ -221,7 +301,14 @@ public class WindowsProtectSetup : Form {
       SetStatus("Setup failed.");
       MessageBox.Show(ex.Message,"WindowsProtect setup failed",MessageBoxButtons.OK,MessageBoxIcon.Error);
     }finally{
-      installButton.Enabled=true;
+      installing=false;
+      if(!completed){
+        userBox.Enabled=passBox.Enabled=installButton.Enabled=true;
+        // Enrollment may have succeeded before a later installation failure.
+        var registered=File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20;
+        ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=!registered;
+        if(registered){ codeBox.Text="Already registered"; installButton.Text="Retry update / repair"; }
+      }
       passBox.Text="";
     }
   }
@@ -412,6 +499,7 @@ while($true){
     }finally{
       for(int i=0;i<bytes.Length;i++) Marshal.WriteByte(blob,i,0);
       Marshal.FreeCoTaskMem(blob);
+      Array.Clear(bytes,0,bytes.Length);
     }
   }
 
@@ -424,6 +512,13 @@ while($true){
   public static void Main(){
     Application.EnableVisualStyles();
     Application.SetCompatibleTextRenderingDefault(false);
+    using(var id=WindowsIdentity.GetCurrent()){
+      if(!new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator)){
+        try{ Process.Start(new ProcessStartInfo(Application.ExecutablePath){UseShellExecute=true,Verb="runas"}); }
+        catch(Win32Exception ex){ if(ex.NativeErrorCode!=1223) MessageBox.Show("WindowsProtect could not request administrator access.","WindowsProtect"); }
+        return;
+      }
+    }
     Application.Run(new WindowsProtectSetup());
   }
 }

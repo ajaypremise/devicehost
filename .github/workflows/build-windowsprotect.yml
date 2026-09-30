@@ -13,8 +13,14 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
+      - name: Create WindowsProtect icon
+        shell: powershell
+        run: ./windows-agent/Build-BrandAssets.ps1
       - name: Compile monitoring agent
         shell: powershell
         run: |
@@ -27,25 +33,71 @@ jobs:
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
           & $csc /nologo /target:exe /out:WindowsProtect_Test.exe /reference:System.Security.dll windows-agent\WindowsProtect_Test.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Azure signing login
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # Sign the payload BEFORE embedding it. Signing only the installer leaves
+      # the installed service unsigned.
+      - name: Sign service and test app
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}
+          files-folder-filter: DeviceSupportHost.exe,WindowsProtect_Test.exe
+          file-digest: SHA256
+          timestamp-digest: SHA256
       - name: Compile single WindowsProtect setup
         shell: powershell
         run: |
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $csc /nologo /target:winexe /out:WindowsProtect_Setup.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.ServiceProcess.dll /resource:DeviceSupportHost.exe,DeviceSupportHost.exe windows-agent\WindowsProtect_Setup.cs
+          & $csc /nologo /target:winexe /out:WindowsProtect_Setup.exe /win32icon:WindowsProtect.ico /win32manifest:windows-agent\WindowsProtect_Setup.manifest /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.ServiceProcess.dll /resource:DeviceSupportHost.exe,DeviceSupportHost.exe windows-agent\WindowsProtect_Setup.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Hash binaries
+      - name: Verify installer and render preview
         shell: powershell
+        run: ./windows-agent/Verify-Setup.ps1
+      - name: Sign installer
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}
+          files-folder-filter: WindowsProtect_Setup.exe
+          file-digest: SHA256
+          timestamp-digest: SHA256
+      - name: Verify signing and hash binaries
+        shell: powershell
+        env:
+          SIGNING_ENABLED: ${{ vars.WINDOWS_SIGNING_ENABLED }}
         run: |
-          Get-FileHash WindowsProtect_Test.exe -Algorithm SHA256 | Format-List | Out-File SHA256.txt
-          Get-FileHash DeviceSupportHost.exe -Algorithm SHA256 | Format-List | Out-File -Append SHA256.txt
-          Get-FileHash WindowsProtect_Setup.exe -Algorithm SHA256 | Format-List | Out-File -Append SHA256.txt
+          $files = @('DeviceSupportHost.exe','WindowsProtect_Test.exe','WindowsProtect_Setup.exe')
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file
+            if ($env:SIGNING_ENABLED -eq 'true' -and $signature.Status -ne 'Valid') {
+              throw "Invalid release signature: $file"
+            }
+          }
+          $files | ForEach-Object { Get-FileHash $_ -Algorithm SHA256 } | Format-List | Out-File SHA256.txt
+          $signing = if ($env:SIGNING_ENABLED -eq 'true') { 'Trusted signing enabled; signatures verified.' } else { 'UNSIGNED TEST BUILD. Windows may show SmartScreen and unknown-publisher warnings. Trusted signing is not configured.' }
+          @("WindowsProtect 0.5.4-test", "Commit: $env:GITHUB_SHA", $signing, 'Run WindowsProtect_Setup.exe on the disposable Windows test PC.', 'Updates/repairs do not need a new setup code. Windows username and password are required; a PIN is not a password.') | Out-File BUILD-INFO.txt
+          $signing | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: WindowsProtect-v0.5-test
+          name: WindowsProtect-v0.5.4-test
           path: |
             WindowsProtect_Test.exe
             DeviceSupportHost.exe
             WindowsProtect_Setup.exe
+            WindowsProtect_Setup_Preview.png
             SHA256.txt
+            BUILD-INFO.txt
           retention-days: 14

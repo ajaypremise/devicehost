@@ -53,7 +53,7 @@ class WindowsProtectTest {
 
   static void Main(){
     Console.Title="WindowsProtect Test";
-    Console.WriteLine("WindowsProtect v0.4 - DeviceHost + MeshCentral telemetry test\n");
+    Console.WriteLine("WindowsProtect v0.4 - protection telemetry test\n");
     Console.Write("Person/device owner name: "); var person=Console.ReadLine(); if(String.IsNullOrWhiteSpace(person)) person="Test User";
     Console.Write("Device label [Kamatera Test]: "); var label=Console.ReadLine(); if(String.IsNullOrWhiteSpace(label)) label="Kamatera Test";
     Console.Write("DEVICE_ENROLLMENT_KEY: "); var key=Console.ReadLine();
