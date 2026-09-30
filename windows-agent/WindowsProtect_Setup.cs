@@ -142,29 +142,37 @@ public class WindowsProtectSetup : Form {
     var owner=ownerBox.Text.Trim();
     var label=labelBox.Text.Trim();
     var code=codeBox.Text.Trim().ToUpperInvariant();
-    if(String.IsNullOrWhiteSpace(owner)||String.IsNullOrWhiteSpace(label)||String.IsNullOrWhiteSpace(code)){
-      MessageBox.Show("Owner, device label and one-time setup code are required.","WindowsProtect",MessageBoxButtons.OK,MessageBoxIcon.Warning);
+    var tokenPath=Path.Combine(DataDir,"device.token");
+    var alreadyEnrolled=File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20;
+
+    if(!alreadyEnrolled && (String.IsNullOrWhiteSpace(owner)||String.IsNullOrWhiteSpace(label)||String.IsNullOrWhiteSpace(code))){
+      MessageBox.Show("For a new PC, owner, device label and one-time setup code are required.","WindowsProtect",MessageBoxButtons.OK,MessageBoxIcon.Warning);
       return;
     }
 
     installButton.Enabled=false; progress.Visible=true;
     try{
       ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
-      SetStatus("Validating setup code...");
-      var redeem=await PostJson(BaseUrl+"/api/setup/redeem","{\"code\":\""+Esc(code)+"\"}",null);
-      var enrollKey=JsonValue(redeem,"device_enrollment_key");
-      var meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
-      if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
+      string meshAgentUrl="";
+      if(!alreadyEnrolled){
+        SetStatus("Validating setup code...");
+        var redeem=await PostJson(BaseUrl+"/api/setup/redeem","{\"code\":\""+Esc(code)+"\"}",null);
+        var enrollKey=JsonValue(redeem,"device_enrollment_key");
+        meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
+        if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
 
-      SetStatus("Enrolling this PC in DeviceHost...");
-      var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.1-test\",\"remote_access_provider\":\"meshcentral\"}";
-      var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
-      var token=JsonValue(enrolled,"device_token");
-      if(String.IsNullOrWhiteSpace(token)) throw new Exception("DeviceHost did not return a device token.");
+        SetStatus("Enrolling this PC in DeviceHost...");
+        var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.3-test\",\"remote_access_provider\":\"meshcentral\"}";
+        var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
+        var token=JsonValue(enrolled,"device_token");
+        if(String.IsNullOrWhiteSpace(token)) throw new Exception("DeviceHost did not return a device token.");
 
-      Directory.CreateDirectory(DataDir);
-      var protectedBytes=ProtectedData.Protect(Encoding.UTF8.GetBytes(token),null,DataProtectionScope.LocalMachine);
-      File.WriteAllText(Path.Combine(DataDir,"device.token"),Convert.ToBase64String(protectedBytes));
+        Directory.CreateDirectory(DataDir);
+        var protectedBytes=ProtectedData.Protect(Encoding.UTF8.GetBytes(token),null,DataProtectionScope.LocalMachine);
+        File.WriteAllText(tokenPath,Convert.ToBase64String(protectedBytes));
+      }else{
+        SetStatus("Existing WindowsProtect enrollment found. Updating this PC...");
+      }
 
       SetStatus("Preparing WindowsProtect service...");
       Directory.CreateDirectory(InstallDir);
