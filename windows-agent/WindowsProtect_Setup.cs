@@ -17,8 +17,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.5.0")]
-[assembly: AssemblyFileVersion("0.5.5.0")]
+[assembly: AssemblyVersion("0.5.6.0")]
+[assembly: AssemblyFileVersion("0.5.6.0")]
 
 public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
@@ -33,6 +33,7 @@ public class WindowsProtectSetup : Form {
   TextBox userBox=new TextBox();
   TextBox passBox=new TextBox();
   bool installing;
+  bool supportOnlyRetry;
   Label credentialHint=new Label();
   Button installButton=new Button();
   Label status=new Label();
@@ -166,7 +167,7 @@ public class WindowsProtectSetup : Form {
     AddRow(footer,progress,0,4);
     status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(100,108,120));
     AddRow(footer,status,0,0);
-    AddRow(footer,TextLabel("TEST BUILD  /  0.5.5",8,Color.FromArgb(120,127,138)),4,0);
+    AddRow(footer,TextLabel("TEST BUILD  /  0.5.6",8,Color.FromArgb(120,127,138)),4,0);
 
     try{
       var tokenPath=Path.Combine(DataDir,"device.token");
@@ -249,41 +250,33 @@ public class WindowsProtectSetup : Form {
   async Task InstallAsync(){
     if(installing) return;
     if(!IsAdmin()){ RelaunchElevated(); return; }
-
     var owner=ownerBox.Text.Trim();
     var label=labelBox.Text.Trim();
     var code=codeBox.Text.Trim().ToUpperInvariant();
     var tokenPath=Path.Combine(DataDir,"device.token");
     var alreadyEnrolled=File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20;
 
-    if(!alreadyEnrolled && (String.IsNullOrWhiteSpace(owner)||String.IsNullOrWhiteSpace(label)||String.IsNullOrWhiteSpace(code))){
-      MessageBox.Show("For a new PC, owner, device label and one-time setup code are required.","WindowsProtect",MessageBoxButtons.OK,MessageBoxIcon.Warning);
-      return;
-    }
-
-    if(String.IsNullOrWhiteSpace(userBox.Text) || String.IsNullOrWhiteSpace(passBox.Text)){
-      SetStatus("Enter your Windows username and password to continue.");
-      if(String.IsNullOrWhiteSpace(userBox.Text)) userBox.Focus(); else passBox.Focus();
-      return;
-    }
-    // CredWrite's generic credential limit is 2560 bytes.
-    if(Encoding.Unicode.GetByteCount(passBox.Text)>2560){
-      SetStatus("The Windows password is too long to store securely."); passBox.Focus(); return;
-    }
-
-    // Reject a bad password BEFORE saving it, redeeming a code or changing services.
-    SetStatus("Verifying Windows account...");
-    try{
-      ValidateWindowsCredential(userBox.Text.Trim(),passBox.Text);
-      credentialHint.Text="Windows password verified on this PC. Stored locally; never uploaded.";
-      credentialHint.ForeColor=Color.FromArgb(100,108,120);
-    }catch(Win32Exception ex){
-      SetStatus("Windows account verification failed.");
-      credentialHint.Text=ex.Message;
-      credentialHint.ForeColor=Color.FromArgb(153,43,43);
-      passBox.Text="";
-      passBox.Focus();
-      return;
+    if(!supportOnlyRetry){
+      if(!alreadyEnrolled && (String.IsNullOrWhiteSpace(owner)||String.IsNullOrWhiteSpace(label)||String.IsNullOrWhiteSpace(code))){
+        SetStatus("Enter the owner, device label and one-time setup code."); return;
+      }
+      if(String.IsNullOrWhiteSpace(userBox.Text) || String.IsNullOrWhiteSpace(passBox.Text)){
+        SetStatus("Enter your Windows username and password to continue.");
+        if(String.IsNullOrWhiteSpace(userBox.Text)) userBox.Focus(); else passBox.Focus(); return;
+      }
+      if(Encoding.Unicode.GetByteCount(passBox.Text)>2560){
+        SetStatus("The Windows password is too long to store securely."); passBox.Focus(); return;
+      }
+      SetStatus("Verifying Windows account...");
+      try{
+        ValidateWindowsCredential(userBox.Text.Trim(),passBox.Text);
+        credentialHint.Text="Windows password verified on this PC. Stored locally; never uploaded.";
+        credentialHint.ForeColor=Color.FromArgb(100,108,120);
+      }catch(Win32Exception ex){
+        SetStatus("Windows account verification failed.");
+        credentialHint.Text=ex.Message; credentialHint.ForeColor=Color.FromArgb(153,43,43);
+        passBox.Text=""; passBox.Focus(); return;
+      }
     }
 
     installing=true;
@@ -291,86 +284,168 @@ public class WindowsProtectSetup : Form {
     installButton.Enabled=false; progress.Visible=true;
     bool completed=false;
     try{
-      SetStatus("Saving Windows credential locally...");
-      SaveCredential(userBox.Text.Trim(),passBox.Text);
-      passBox.Text="";
       ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
-      string meshAgentUrl="";
-      if(!alreadyEnrolled){
-        SetStatus("Validating setup code...");
-        var redeem=await PostJson(BaseUrl+"/api/setup/redeem","{\"code\":\""+Esc(code)+"\"}",null);
-        var enrollKey=JsonValue(redeem,"device_enrollment_key");
-        meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
-        if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
-
-        SetStatus("Registering this PC...");
-        var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.5-test\",\"remote_access_provider\":\"meshcentral\"}";
-        var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
-        var token=JsonValue(enrolled,"device_token");
-        if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
-
-        Directory.CreateDirectory(DataDir);
-        var protectedBytes=ProtectedData.Protect(Encoding.UTF8.GetBytes(token),null,DataProtectionScope.LocalMachine);
-        File.WriteAllText(tokenPath,Convert.ToBase64String(protectedBytes));
-      }else{
-        SetStatus("Existing WindowsProtect enrollment found. Updating this PC...");
+      if(!supportOnlyRetry){
+        SetStatus("Saving Windows credential locally...");
+        SaveCredential(userBox.Text.Trim(),passBox.Text); passBox.Text="";
+        string meshAgentUrl="";
+        if(!alreadyEnrolled){
+          SetStatus("Validating setup code...");
+          var redeem=await PostJson(BaseUrl+"/api/setup/redeem","{\"code\":\""+Esc(code)+"\"}",null);
+          var enrollKey=JsonValue(redeem,"device_enrollment_key");
+          meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
+          if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
+          SetStatus("Registering this PC...");
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.6-test\",\"remote_access_provider\":\"meshcentral\"}";
+          var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
+          var token=JsonValue(enrolled,"device_token");
+          if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
+          Directory.CreateDirectory(DataDir);
+          var protectedBytes=ProtectedData.Protect(Encoding.UTF8.GetBytes(token),null,DataProtectionScope.LocalMachine);
+          File.WriteAllText(tokenPath,Convert.ToBase64String(protectedBytes));
+          if(!String.IsNullOrWhiteSpace(meshAgentUrl)) File.WriteAllText(Path.Combine(DataDir,"support-agent.url"),meshAgentUrl);
+        }
+        // Initialize ONCE. Pending remains pending across retries/reboots;
+        // an already protected legacy installation stays active during updates.
+        ProtectionActivation.Initialize(alreadyEnrolled && LegacyProtectionInstalled());
+        Directory.CreateDirectory(InstallDir);
+        Directory.CreateDirectory(Path.Combine(DataDir,"Setup"));
+        HardenWindowsProtect();
+        SetStatus("Installing protection components...");
+        StopExistingService(); ExtractEmbeddedService(ServiceExe); InstallUserUI();
+        if(String.IsNullOrWhiteSpace(meshAgentUrl)){
+          var saved=Path.Combine(DataDir,"support-agent.url");
+          if(File.Exists(saved)) meshAgentUrl=File.ReadAllText(saved).Trim();
+        }
+        if(String.IsNullOrWhiteSpace(meshAgentUrl)) meshAgentUrl="https://34-69-184-103.sslip.io/meshagents?id=4&meshid=gY1Com9g9071ieNPRic8EHP2irnFHZxy1gpsoBn8opAi4guIJ$gAQj$INq8mbEjL&installflags=0";
+        if(!MeshReady()){
+          SetStatus("Connecting secure support...");
+          var temp=Path.Combine(Path.GetTempPath(),"WindowsProtect-MeshAgent.exe");
+          try{
+            using(var wc=new WebClient()) await wc.DownloadFileTaskAsync(new Uri(meshAgentUrl),temp);
+            var exitCode=await Run(temp,"-fullinstall",90000);
+            if(exitCode!=0) throw new Exception("The secure support component could not be installed. Retry setup.");
+          }finally{ try{ File.Delete(temp); }catch{} }
+          for(int i=0;i<20 && !MeshReady();i++) await Task.Delay(1500);
+          if(!MeshReady()) throw new Exception("Secure support has not started. Retry setup; protection has not been activated.");
+        }
+        InstallOrUpdateService(); HardenWindowsProtect();
+        using(var service=new ServiceController("DeviceSupportHost")){
+          await Task.Run(()=>service.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(20)));
+        }
+        // From this checkpoint Retry never redeems a code, registers a second
+        // device, reinstalls payloads or asks for the password again.
+        supportOnlyRetry=true;
       }
-
-      SetStatus("Preparing protection services...");
-      Directory.CreateDirectory(InstallDir);
-      StopExistingService();
-      ExtractEmbeddedService(ServiceExe);
-      InstallUserUI();
-
-      if(String.IsNullOrWhiteSpace(meshAgentUrl)) meshAgentUrl="https://34-69-184-103.sslip.io/meshagents?id=4&meshid=gY1Com9g9071ieNPRic8EHP2irnFHZxy1gpsoBn8opAi4guIJ$gAQj$INq8mbEjL&installflags=0";
-      var meshReady=MeshReady();
-      if(!meshReady && !String.IsNullOrWhiteSpace(meshAgentUrl)){
-        SetStatus("Installing secure support component...");
-        var temp=Path.Combine(Path.GetTempPath(),"WindowsProtect-MeshAgent.exe");
-        using(var wc=new WebClient()) await wc.DownloadFileTaskAsync(new Uri(meshAgentUrl),temp);
-        await Run(temp,"-fullinstall",90000);
-        try{ File.Delete(temp); }catch{}
-        for(int i=0;i<20 && !MeshReady();i++) await Task.Delay(1500);
-        meshReady=MeshReady();
-      }
-
-      if(!meshReady){
-        throw new Exception("The secure support connection is not ready yet. WindowsProtect was not activated so your current support route is preserved.");
-      }
-
-      InstallOrUpdateService();
-      HardenWindowsProtect();
-
-      SetStatus("Finishing security checks...");
-      using(var service=new ServiceController("DeviceSupportHost")){
-        await Task.Run(()=>service.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(20)));
-      }
-
-      completed=true;
-      progress.Visible=false;
-      SetStatus("WindowsProtect installed successfully.");
-      installing=false;
-      MessageBox.Show(this,"WindowsProtect is installed and the protection service is running.","Setup complete",MessageBoxButtons.OK,MessageBoxIcon.Information);
+      await CompleteProtectionActivation();
+      completed=true; installing=false; progress.Visible=false;
+      SetStatus("Installation complete - Protected.");
+      MessageBox.Show(this,"WindowsProtect is installed and protection is active.","Setup complete",MessageBoxButtons.OK,MessageBoxIcon.Information);
       Close();
-    }catch(WebException ex){
-      progress.Visible=false;
-      SetStatus("Setup failed.");
-      MessageBox.Show(ReadWebError(ex),"WindowsProtect setup failed",MessageBoxButtons.OK,MessageBoxIcon.Error);
     }catch(Exception ex){
       progress.Visible=false;
-      SetStatus("Setup failed.");
-      MessageBox.Show(ex.Message,"WindowsProtect setup failed",MessageBoxButtons.OK,MessageBoxIcon.Error);
+      if(supportOnlyRetry){
+        installButton.Text="Retry support check";
+        bool active=ProtectionActivation.IsActive();
+        SetStatus(active?"Protection active. Retry the final confirmation.":"Setup incomplete - support verification failed.");
+        credentialHint.Text=active?"Protection remains active. Retry will finish the service confirmation.":"Protection has not been activated. Your current remote access remains available. Retry to finish setup.";
+        credentialHint.ForeColor=Color.FromArgb(153,43,43);
+      }else{
+        SetStatus("Setup incomplete. Retry installation.");
+        credentialHint.Text=ex is WebException?"The setup server could not be reached. Check your connection and retry.":ex.Message;
+        credentialHint.ForeColor=Color.FromArgb(153,43,43);
+      }
     }finally{
       installing=false;
       if(!completed){
-        userBox.Enabled=passBox.Enabled=installButton.Enabled=true;
-        // Enrollment may have succeeded before a later installation failure.
-        var registered=File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20;
-        ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=!registered;
-        if(registered){ codeBox.Text="Already registered"; installButton.Text="Retry update / repair"; }
+        installButton.Enabled=true;
+        if(!supportOnlyRetry){
+          userBox.Enabled=passBox.Enabled=true;
+          var registered=File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20;
+          ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=!registered;
+          if(registered){ codeBox.Text="Already registered"; installButton.Text="Retry installation"; }
+        }
       }
       passBox.Text="";
     }
+  }
+
+  static bool LegacyProtectionInstalled(){
+    try{
+      using(var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\DeviceSupportHost")){
+        var image=key==null?"":Convert.ToString(key.GetValue("ImagePath")??"");
+        return File.Exists(ServiceExe) && image.IndexOf(ServiceExe,StringComparison.OrdinalIgnoreCase)>=0;
+      }
+    }catch{ return false; }
+  }
+
+  static string ReadDeviceToken(){
+    var encrypted=Convert.FromBase64String(File.ReadAllText(Path.Combine(DataDir,"device.token")).Trim());
+    return Encoding.UTF8.GetString(ProtectedData.Unprotect(encrypted,null,DataProtectionScope.LocalMachine));
+  }
+
+  // Server success alone is insufficient. Only the fresh challenge file sent
+  // over approved remote support to THIS PC can complete the round trip.
+  static string VerifiedSupportChallenge(string response,string setupDirectory){
+    if(!Regex.IsMatch(response??"",@"""desktop_verified""\s*:\s*true") ||
+       !Regex.IsMatch(response??"",@"""command_dispatched""\s*:\s*true")) return "";
+    var nonce=JsonValue(response,"challenge");
+    if(!Regex.IsMatch(nonce,"\\A[a-f0-9]{64}\\z")) return "";
+    var proof=Path.Combine(setupDirectory,"support-"+nonce+".txt");
+    try{ if(File.Exists(proof) && File.ReadAllText(proof).Trim()==nonce) return nonce; }catch{}
+    return "";
+  }
+
+  async Task<string> VerifySupportConnection(){
+    var clock=Stopwatch.StartNew();
+    var token=ReadDeviceToken();
+    var setup=Path.Combine(DataDir,"Setup");
+    SetStatus("Testing secure support (up to 60 seconds)...");
+    while(clock.ElapsedMilliseconds<60000){
+      var remaining=(int)(60000-clock.ElapsedMilliseconds);
+      if(remaining<1000) break;
+      try{
+        using(var wc=new WebClient()){
+          wc.Headers[HttpRequestHeader.ContentType]="application/json";
+          wc.Headers.Add("x-device-token",token);
+          var request=wc.UploadStringTaskAsync(new Uri(BaseUrl+"/api/setup/verify-support"),"POST","{}");
+          if(await Task.WhenAny(request,Task.Delay(Math.Min(30000,remaining)))!=request){ wc.CancelAsync(); break; }
+          var response=await request;
+          // Give the delivered command a few seconds to write its proof locally.
+          var waitUntil=Math.Min(60000,clock.ElapsedMilliseconds+5000);
+          do{
+            var nonce=VerifiedSupportChallenge(response,setup);
+            if(!String.IsNullOrWhiteSpace(nonce)){
+              try{ File.Delete(Path.Combine(setup,"support-"+nonce+".txt")); }catch{}
+              return nonce;
+            }
+            await Task.Delay(250);
+          }while(clock.ElapsedMilliseconds<waitUntil);
+        }
+      }catch(WebException){ }
+      if(clock.ElapsedMilliseconds<59000) await Task.Delay(1000);
+    }
+    throw new TimeoutException("Secure support could not be verified. Retry the support check.");
+  }
+
+  async Task CompleteProtectionActivation(){
+    if(!ProtectionActivation.IsActive()){
+      var nonce=await VerifySupportConnection();
+      SetStatus("Activating protection...");
+      ProtectionActivation.Activate(nonce);
+    }
+    var expected=ProtectionActivation.Nonce();
+    if(String.IsNullOrWhiteSpace(expected)) return; // previously protected legacy PC
+    SetStatus("Activating protection and confirming service...");
+    using(var service=new ServiceController("DeviceSupportHost")) service.ExecuteCommand(128);
+    var clock=Stopwatch.StartNew();
+    while(clock.ElapsedMilliseconds<45000){
+      try{
+        if(File.Exists(ProtectionActivation.ReadyFile) && File.ReadAllText(ProtectionActivation.ReadyFile).Trim()==expected) return;
+      }catch{}
+      await Task.Delay(500);
+    }
+    throw new TimeoutException("Protection was enabled, but final confirmation is still pending.");
   }
 
   static async Task<string> PostJson(string url,string body,string enrollmentKey){

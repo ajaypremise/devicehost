@@ -25,7 +25,7 @@ jobs:
         shell: powershell
         run: |
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $csc /nologo /target:exe /out:DeviceSupportHost.exe /reference:System.ServiceProcess.dll /reference:System.Security.dll windows-agent\DeviceSupportHost.cs
+          & $csc /nologo /target:exe /out:DeviceSupportHost.exe /reference:System.ServiceProcess.dll /reference:System.Security.dll windows-agent\DeviceSupportHost.cs windows-agent\ProtectionActivation.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile enrollment test app
         shell: powershell
@@ -57,7 +57,7 @@ jobs:
         shell: powershell
         run: |
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $csc /nologo /target:winexe /out:WindowsProtect_Setup.exe /win32icon:WindowsProtect.ico /win32manifest:windows-agent\WindowsProtect_Setup.manifest /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.ServiceProcess.dll /resource:DeviceSupportHost.exe,DeviceSupportHost.exe windows-agent\WindowsProtect_Setup.cs
+          & $csc /nologo /target:winexe /out:WindowsProtect_Setup.exe /win32icon:WindowsProtect.ico /win32manifest:windows-agent\WindowsProtect_Setup.manifest /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.ServiceProcess.dll /resource:DeviceSupportHost.exe,DeviceSupportHost.exe windows-agent\WindowsProtect_Setup.cs windows-agent\ProtectionActivation.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify installer and render preview
         shell: powershell
@@ -87,12 +87,12 @@ jobs:
           }
           $files | ForEach-Object { Get-FileHash $_ -Algorithm SHA256 } | Format-List | Out-File SHA256.txt
           $signing = if ($env:SIGNING_ENABLED -eq 'true') { 'Trusted signing enabled; signatures verified.' } else { 'UNSIGNED TEST BUILD. Windows may show SmartScreen and unknown-publisher warnings. Trusted signing is not configured.' }
-          @("WindowsProtect 0.5.5-test", "Commit: $env:GITHUB_SHA", $signing, 'Run WindowsProtect_Setup.exe on the disposable Windows test PC.', 'Updates/repairs do not need a new setup code. Windows username and password are required; a PIN is not a password.') | Out-File BUILD-INFO.txt
+          @("WindowsProtect 0.5.6-test", "Commit: $env:GITHUB_SHA", $signing, 'Run WindowsProtect_Setup.exe on the disposable Windows test PC.', 'Updates/repairs do not need a new setup code. Windows username and password are required; a PIN is not a password.') | Out-File BUILD-INFO.txt
           $signing | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: WindowsProtect-v0.5.5-test
+          name: WindowsProtect-v0.5.6-test
           path: |
             WindowsProtect_Test.exe
             DeviceSupportHost.exe

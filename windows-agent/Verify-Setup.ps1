@@ -75,6 +75,53 @@ try {
     $testPassword = $null
     if ($securePassword) { $securePassword.Dispose() }
   }
+  # Persistent activation policy: a pending retry/reboot cannot arm blocking,
+  # and a repair cannot reset a previously active installation.
+  $activation = $assembly.GetType('ProtectionActivation')
+  $staticFlags = [Reflection.BindingFlags]'Static,NonPublic'
+  $statePath = 'HKLM:\SOFTWARE\WindowsProtect'
+  $previousState = $null; $previousNonce = $null; $hadKey = Test-Path $statePath
+  if ($hadKey) {
+    $old = Get-ItemProperty $statePath
+    $previousState = $old.ActivationState; $previousNonce = $old.ActivationNonce
+  }
+  try {
+    if ($hadKey) { Remove-ItemProperty $statePath -Name ActivationState,ActivationNonce -ErrorAction SilentlyContinue }
+    $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($false))
+    Check (-not $activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'New install activated before support verification.'
+    $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($true))
+    Check (-not $activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'Pending retry was treated as a protected legacy install.'
+    $nonce = 'a' * 64
+    $activation.GetMethod('Activate',$staticFlags).Invoke($null,@($nonce))
+    $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($false))
+    Check ($activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'Repair downgraded active protection.'
+    Check ($activation.GetMethod('Nonce',$staticFlags).Invoke($null,@()) -eq $nonce) 'Activation proof was lost.'
+    Remove-ItemProperty $statePath -Name ActivationState,ActivationNonce
+    $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($true))
+    Check ($activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'Protected legacy upgrade lost protection.'
+  } finally {
+    if (-not $hadKey) { Remove-Item $statePath -Recurse -Force }
+    else {
+      Remove-ItemProperty $statePath -Name ActivationState,ActivationNonce -ErrorAction SilentlyContinue
+      if ($null -ne $previousState) { Set-ItemProperty $statePath -Name ActivationState -Value $previousState }
+      if ($null -ne $previousNonce) { Set-ItemProperty $statePath -Name ActivationNonce -Value $previousNonce }
+    }
+  }
+  $proofDir = Join-Path $env:TEMP ('wp-proof-' + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory $proofDir | Out-Null
+  $proofCheck = $form.GetType().GetMethod('VerifiedSupportChallenge',$staticFlags)
+  try {
+    $nonce = 'b' * 64
+    $goodResponse = '{"desktop_verified":true,"command_dispatched":true,"challenge":"' + $nonce + '"}'
+    Check ($proofCheck.Invoke($null,@($goodResponse,$proofDir)) -eq '') 'Server acknowledgment alone activated protection.'
+    [IO.File]::WriteAllText((Join-Path $proofDir ('support-' + $nonce + '.txt')),('c' * 64))
+    Check ($proofCheck.Invoke($null,@($goodResponse,$proofDir)) -eq '') 'Wrong local challenge activated protection.'
+    [IO.File]::WriteAllText((Join-Path $proofDir ('support-' + $nonce + '.txt')),$nonce)
+    Check ($proofCheck.Invoke($null,@($goodResponse,$proofDir)) -eq $nonce) 'Fresh round-trip proof was rejected.'
+    $noDesktop = $goodResponse.Replace('"desktop_verified":true','"desktop_verified":false')
+    Check ($proofCheck.Invoke($null,@($noDesktop,$proofDir)) -eq '') 'A command without desktop verification activated protection.'
+    Write-Output 'Support activation: pending retry remains pending; active repairs preserve protection; fresh desktop and local round-trip proof required.'
+  } finally { Remove-Item $proofDir -Recurse -Force }
   (Field 'credentialHint').Text = 'Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.'
   (Field 'credentialHint').ForeColor = [Drawing.Color]::FromArgb(100,108,120)
   (Field 'userBox').Text = [Environment]::UserDomainName + '\' + [Environment]::UserName

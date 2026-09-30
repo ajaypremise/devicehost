@@ -6,6 +6,7 @@ const DEVICE_API_PREFIXES = [
   "/api/events",
   "/api/inventory",
   "/api/setup/redeem",
+  "/api/setup/verify-support",
 ];
 
 export function proxy(request) {

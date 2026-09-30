@@ -7,6 +7,8 @@ on:
       - "app/**"
       - "proxy.js"
       - "package.json"
+      - "package-lock.json"
+      - "tests/**"
       - ".github/workflows/verify-devicehost.yml"
 
 permissions:
@@ -21,7 +23,9 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+      - name: Verify support handover
+        run: node --test tests/*.test.js
       - name: Build
         env:
           SUPABASE_URL: https://example.supabase.co

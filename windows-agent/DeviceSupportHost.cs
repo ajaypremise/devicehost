@@ -12,7 +12,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.5-test";
+  const string AgentVersion="0.5.6-test";
 
   static readonly string[] BlockedProcessNames = new[]{
     "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
@@ -36,6 +36,8 @@ public sealed class DeviceSupportHost : ServiceBase {
   DateTime lastMeshRepair=DateTime.MinValue;
   DateTime lastMeshMissingEvent=DateTime.MinValue;
   Timer timer;
+  bool protectionActive;
+  int ticking;
 
   public DeviceSupportHost(){
     ServiceName="DeviceSupportHost";
@@ -47,7 +49,8 @@ public sealed class DeviceSupportHost : ServiceBase {
     ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
     Directory.CreateDirectory(DataDir);
     Log("Service started.");
-    ApplySecurityBaseline();
+    protectionActive=ProtectionActivation.IsActive();
+    if(protectionActive) ApplySecurityBaseline();
     timer=new Timer(_=>Tick(),null,3000,30000);
   }
 
@@ -56,14 +59,38 @@ public sealed class DeviceSupportHost : ServiceBase {
     Log("Service stopped.");
   }
 
+  protected override void OnCustomCommand(int command){
+    if(command==128) ThreadPool.QueueUserWorkItem(_=>Tick());
+  }
+
   void Tick(){
+    if(Interlocked.CompareExchange(ref ticking,1,0)!=0) return;
     try{
-      BlockUnauthorizedRemoteTools();
+      // Pending setup must preserve the current remote-support route. Never
+      // disarm a service that has already observed activation.
+      if(!protectionActive && ProtectionActivation.IsActive()){
+        protectionActive=true;
+        ApplySecurityBaseline();
+      }
+      if(protectionActive){
+        BlockUnauthorizedRemoteTools();
+        ProtectionActivation.ConfirmServiceReady();
+      }
       EnsureApprovedRemoteAccess();
-      SendHeartbeat();
+      SendHeartbeat(protectionActive);
       if((DateTime.UtcNow-lastInventoryUpload).TotalMinutes>=60){ SendInventory(); lastInventoryUpload=DateTime.UtcNow; }
     }catch(Exception ex){
       Log("Tick failed: "+ex.GetType().Name+" - "+ex.Message);
+    }finally{ Interlocked.Exchange(ref ticking,0); }
+  }
+
+  sealed class BoundedWebClient : WebClient {
+    protected override WebRequest GetWebRequest(Uri address){
+      var request=base.GetWebRequest(address);
+      request.Timeout=10000;
+      var http=request as HttpWebRequest;
+      if(http!=null) http.ReadWriteTimeout=10000;
+      return request;
     }
   }
 
@@ -332,7 +359,7 @@ public sealed class DeviceSupportHost : ServiceBase {
       var token=ReadToken();
       if(String.IsNullOrWhiteSpace(token)) return;
       var body="{\"event_type\":\""+JsonEscape(eventType)+"\",\"severity\":\""+JsonEscape(severity)+"\",\"title\":\""+JsonEscape(title)+"\",\"details\":{\"message\":\""+JsonEscape(detail)+"\"}}";
-      using(var wc=new WebClient()){
+      using(var wc=new BoundedWebClient()){
         wc.Headers[HttpRequestHeader.ContentType]="application/json";
         wc.Headers.Add("x-device-token",token);
         wc.UploadString(BaseUrl+"/api/events","POST",body);
@@ -345,7 +372,7 @@ public sealed class DeviceSupportHost : ServiceBase {
       var token=ReadToken();
       if(String.IsNullOrWhiteSpace(token)) return;
       var body="{\"apps\":"+InstalledAppsJson()+"}";
-      using(var wc=new WebClient()){
+      using(var wc=new BoundedWebClient()){
         wc.Headers[HttpRequestHeader.ContentType]="application/json";
         wc.Headers.Add("x-device-token",token);
         wc.UploadString(BaseUrl+"/api/inventory","POST",body);
@@ -356,7 +383,7 @@ public sealed class DeviceSupportHost : ServiceBase {
     }
   }
 
-  static void SendHeartbeat(){
+  static void SendHeartbeat(bool active){
     try{
       ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
       var token=ReadToken();
@@ -380,7 +407,8 @@ public sealed class DeviceSupportHost : ServiceBase {
       arr.Append("]");
 
       var json="{\"computer_name\":\""+JsonEscape(Environment.MachineName)+
-        "\",\"protection_status\":\"protected\""+
+        "\",\"protection_status\":\""+(active?"protected":"pending")+"\""+
+        ",\"migration_status\":\""+(active?"completed":"verifying_support")+"\""+
         ",\"os_version\":\""+JsonEscape(Environment.OSVersion.VersionString)+
         "\",\"agent_version\":\""+AgentVersion+
         "\",\"defender_enabled\":"+(defender?"true":"false")+
@@ -396,7 +424,7 @@ public sealed class DeviceSupportHost : ServiceBase {
         ",\"meshcentral_node_id\":\""+JsonEscape(meshNodeId)+"\""+
         ",\"meshcentral_agent_version\":\""+JsonEscape(meshVersion)+"\"}";
 
-      using(var wc=new WebClient()){
+      using(var wc=new BoundedWebClient()){
         wc.Headers[HttpRequestHeader.ContentType]="application/json";
         wc.Headers.Add("x-device-token",token);
         wc.UploadString(BaseUrl+"/api/heartbeat","POST",json);
