@@ -235,3 +235,11 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .inventoryTable td { padding:11px 13px; border-bottom:1px solid var(--line); font-size:12px; }
 .inventoryTable tbody tr:last-child td { border-bottom:0; }
 .inventoryTable tbody tr:hover { background:rgba(255,255,255,.018); }
+
+
+.secondaryAction { border:1px solid var(--line); background:var(--panel-2); color:var(--text); border-radius:8px; padding:8px 11px; font-size:12px; cursor:pointer; }
+.nameEditor { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.nameEditor input { min-width:170px; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:8px; padding:8px 10px; font-size:12px; }
+.nameEditor button { border:1px solid var(--line); background:var(--panel-2); color:var(--text); border-radius:8px; padding:8px 10px; cursor:pointer; font-size:12px; }
+.nameEditor button[type="submit"] { background:#f4f7fb; color:#0b0e13; font-weight:750; }
+.nameEditor span { color:#ffb5ba; font-size:11px; width:100%; }
