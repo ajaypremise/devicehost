@@ -27,17 +27,25 @@ jobs:
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
           & $csc /nologo /target:exe /out:WindowsProtect_Test.exe /reference:System.Security.dll windows-agent\WindowsProtect_Test.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile single WindowsProtect setup
+        shell: powershell
+        run: |
+          $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          & $csc /nologo /target:winexe /out:WindowsProtect_Setup.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.ServiceProcess.dll /resource:DeviceSupportHost.exe,DeviceSupportHost.exe windows-agent\WindowsProtect_Setup.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Hash binaries
         shell: powershell
         run: |
           Get-FileHash WindowsProtect_Test.exe -Algorithm SHA256 | Format-List | Out-File SHA256.txt
           Get-FileHash DeviceSupportHost.exe -Algorithm SHA256 | Format-List | Out-File -Append SHA256.txt
+          Get-FileHash WindowsProtect_Setup.exe -Algorithm SHA256 | Format-List | Out-File -Append SHA256.txt
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: WindowsProtect-v0.4-monitoring-test
+          name: WindowsProtect-v0.5-test
           path: |
             WindowsProtect_Test.exe
             DeviceSupportHost.exe
+            WindowsProtect_Setup.exe
             SHA256.txt
           retention-days: 14
