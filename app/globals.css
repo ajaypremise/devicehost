@@ -197,3 +197,17 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 480px) {
   .filterBar { grid-template-columns:1fr; }
 }
+
+
+.quickActions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:0 0 14px; }
+.quickActions a { display:flex; flex-direction:column; gap:5px; min-height:86px; padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--text); text-decoration:none; }
+.quickActions a:hover { background:var(--panel-2); }
+.quickActions strong { font-size:13px; }
+.quickActions span { color:var(--muted); font-size:11px; line-height:1.4; }
+
+@media (max-width: 900px) {
+  .quickActions { grid-template-columns:repeat(2,1fr); }
+}
+@media (max-width: 520px) {
+  .quickActions { grid-template-columns:1fr; }
+}
