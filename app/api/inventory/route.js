@@ -36,12 +36,17 @@ export async function POST(request) {
     const apps = Array.isArray(body.apps) ? body.apps.slice(0, 1000) : [];
     const now = new Date().toISOString();
 
+    const cleanText = (value, max) => {
+      if (value == null) return null;
+      return String(value).replace(/\u0000/g, "").trim().slice(0, max) || null;
+    };
+
     const cleaned = apps
       .map((app) => ({
         device_id: device.id,
-        app_name: String(app.app_name || "").trim().slice(0, 240),
-        app_version: app.app_version ? String(app.app_version).trim().slice(0, 120) : null,
-        publisher: app.publisher ? String(app.publisher).trim().slice(0, 160) : null,
+        app_name: cleanText(app.app_name, 240),
+        app_version: cleanText(app.app_version, 120),
+        publisher: cleanText(app.publisher, 160),
         is_remote_access: Boolean(app.is_remote_access),
         last_seen_at: now
       }))
