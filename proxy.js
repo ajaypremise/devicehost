@@ -4,6 +4,7 @@ const DEVICE_API_PREFIXES = [
   "/api/enroll",
   "/api/heartbeat",
   "/api/events",
+  "/api/inventory",
   "/api/setup/redeem",
 ];
 
