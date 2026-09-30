@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import DeviceNameEditor from "./DeviceNameEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,7 @@ export default async function DevicePage({ params }) {
         </div>
         <div className="detailActions">
           <span className={online ? "status online" : "status offline"}>{online ? "Online" : "Offline"}</span>
+          <DeviceNameEditor deviceId={device.id} personName={device.person_name || ""} deviceName={device.device_name || ""} />
           <a className="primaryAction" href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer">Open MeshCentral</a>
         </div>
       </div>
