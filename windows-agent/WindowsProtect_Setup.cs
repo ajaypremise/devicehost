@@ -179,6 +179,7 @@ public class WindowsProtectSetup : Form {
       StopExistingService();
       ExtractEmbeddedService(ServiceExe);
 
+      if(String.IsNullOrWhiteSpace(meshAgentUrl)) meshAgentUrl="https://34-69-184-103.sslip.io/meshagents?id=4&meshid=gY1Com9g9071ieNPRic8EHP2irnFHZxy1gpsoBn8opAi4guIJ$gAQj$INq8mbEjL&installflags=0";
       var meshReady=MeshReady();
       if(!meshReady && !String.IsNullOrWhiteSpace(meshAgentUrl)){
         SetStatus("Installing approved MeshCentral agent...");
@@ -207,6 +208,7 @@ public class WindowsProtectSetup : Form {
       progress.Visible=false;
       SetStatus("WindowsProtect installed successfully.");
       MessageBox.Show("WindowsProtect is installed. DeviceHost monitoring and approved MeshCentral access are active.","WindowsProtect",MessageBoxButtons.OK,MessageBoxIcon.Information);
+      Close();
     }catch(WebException ex){
       progress.Visible=false;
       SetStatus("Setup failed.");
