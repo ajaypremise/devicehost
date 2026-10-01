@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.ServiceProcess;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Win32;
 
 public sealed class DeviceSupportHost : ServiceBase {
@@ -35,10 +36,10 @@ public sealed class DeviceSupportHost : ServiceBase {
   DateTime lastInventoryUpload=DateTime.MinValue;
   DateTime lastMeshRepair=DateTime.MinValue;
   DateTime lastMeshMissingEvent=DateTime.MinValue;
-  Timer timer;
-  bool protectionActive;
-  int ticking;
-  DateTime nextMaintenance=DateTime.MinValue;
+  Timer timer,policyTimer;
+  volatile bool protectionActive;
+  bool baselineApplied;
+  int ticking,policyTicking;
 
   public DeviceSupportHost(){
     ServiceName="DeviceSupportHost";
@@ -51,35 +52,27 @@ public sealed class DeviceSupportHost : ServiceBase {
     Directory.CreateDirectory(DataDir);
     Log("Service started.");
     protectionActive=ProtectionActivation.IsActive();
-    if(protectionActive) ApplySecurityBaseline();
-    timer=new Timer(_=>Tick(),null,1000,1000);
+    policyTimer=new Timer(_=>EnforceActivation(),null,0,1000);
+    timer=new Timer(_=>Tick(),null,3000,30000);
   }
 
   protected override void OnStop(){
     if(timer!=null) timer.Dispose();
+    if(policyTimer!=null) policyTimer.Dispose();
     Log("Service stopped.");
   }
 
   protected override void OnCustomCommand(int command){
-    if(command==128) ThreadPool.QueueUserWorkItem(_=>Tick());
+    if(command==128){ EnforceActivation(); ThreadPool.QueueUserWorkItem(_=>Tick()); }
   }
 
   void Tick(){
     if(Interlocked.CompareExchange(ref ticking,1,0)!=0) return;
     try{
-      ProtectionActivation.Evaluate();
-      bool justActivated=false;
-      // Pending setup must preserve the current remote-support route. Never
-      // disarm a service that has already observed activation.
-      if(!protectionActive && ProtectionActivation.IsActive()){
-        protectionActive=true;
-        justActivated=true;
-        ApplySecurityBaseline();
-      }
-      if(!justActivated && DateTime.UtcNow<nextMaintenance) return;
-      nextMaintenance=DateTime.UtcNow.AddSeconds(30);
+      if(!protectionActive && ProtectionActivation.IsActive()) protectionActive=true;
       if(protectionActive){
         BlockUnauthorizedRemoteTools();
+        if(!baselineApplied){ ApplySecurityBaseline(); baselineApplied=true; }
         ProtectionActivation.ConfirmServiceReady();
       }
       EnsureApprovedRemoteAccess();
@@ -88,6 +81,29 @@ public sealed class DeviceSupportHost : ServiceBase {
     }catch(Exception ex){
       Log("Tick failed: "+ex.GetType().Name+" - "+ex.Message);
     }finally{ Interlocked.Exchange(ref ticking,0); }
+  }
+
+  // Independent local enforcement: never wait for telemetry, PowerShell,
+  // inventory uploads or a control-plane response before closing the window.
+  void EnforceActivation(){
+    if(Interlocked.CompareExchange(ref policyTicking,1,0)!=0) return;
+    try{
+      ProtectionActivation.Evaluate();
+      if(!protectionActive && ProtectionActivation.IsActive()){
+        protectionActive=true;
+        ThreadPool.QueueUserWorkItem(_=>Tick());
+      }
+      if(protectionActive){
+        foreach(var name in BlockedProcessNames){
+          try{
+            foreach(var process in Process.GetProcessesByName(name)){
+              using(process){ try{ process.Kill(); }catch{} }
+            }
+          }catch{}
+        }
+      }
+    }catch(Exception ex){ Log("Activation check failed: "+ex.GetType().Name); }
+    finally{ Interlocked.Exchange(ref policyTicking,0); }
   }
 
   sealed class BoundedWebClient : WebClient {
@@ -124,9 +140,11 @@ public sealed class DeviceSupportHost : ServiceBase {
       };
       using(var p=new Process{StartInfo=psi}){
         p.Start();
-        var s=p.StandardOutput.ReadToEnd().Trim();
-        p.WaitForExit(15000);
-        return s;
+        var output=p.StandardOutput.ReadToEndAsync();
+        var errors=p.StandardError.ReadToEndAsync();
+        if(!p.WaitForExit(15000)){ try{ p.Kill(); }catch{} return ""; }
+        if(!output.Wait(1000)) return "";
+        return output.Result.Trim();
       }
     }catch{return "";}
   }
