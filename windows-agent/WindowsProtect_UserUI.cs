@@ -40,23 +40,27 @@ public sealed class WindowsProtectUserUI : ApplicationContext {
         return;
       }
 
-      if(p[0]=="message" && p.Length>=6){
+      if(p[0]=="message" && p.Length>=5){
         var title=Decode(p[1]);
         var message=Decode(p[2]);
         var size=(p[3]=="compact"||p[3]=="large")?p[3]:"standard";
         var placement=(p[4]=="top_right"||p[4]=="bottom_right")?p[4]:"center";
-        ShowMessage(title,message,size,placement);
+        var kind=p.Length>=6&&(p[5]=="information"||p[5]=="error")?p[5]:"warning";
+        ShowMessage(title,message,size,placement,kind);
       }
     }catch{}
   }
 
-  static void ShowMessage(string title,string message,string size,string placement){
-    int w=520,h=240;
-    if(size=="compact"){w=420;h=180;}
-    else if(size=="large"){w=640;h=320;}
+  static void ShowMessage(string title,string message,string size,string placement,string kind){
+    using(var form=BuildMessage(title,message,size,placement,kind))form.ShowDialog();
+  }
+  internal static Form BuildMessage(string title,string message,string size,string placement,string kind){
+    int w=540,h=310;
+    if(size=="compact"){w=440;h=240;}
+    else if(size=="large"){w=680;h=440;}
 
-    using(var f=new Form()){
-      f.Text=String.IsNullOrWhiteSpace(title)?"WindowsProtect":title;
+    var f=new Form();
+      f.Text="WindowsProtect";
       f.ClientSize=new Size(w,h);
       f.FormBorderStyle=FormBorderStyle.FixedDialog;
       f.MaximizeBox=false;
@@ -64,7 +68,8 @@ public sealed class WindowsProtectUserUI : ApplicationContext {
       f.ShowInTaskbar=true;
       f.TopMost=true;
       f.StartPosition=FormStartPosition.Manual;
-      f.BackColor=Color.White;
+      f.BackColor=SystemColors.Window;
+      f.ForeColor=SystemColors.WindowText;
       f.Font=new Font("Segoe UI",10);
 
       var wa=Screen.PrimaryScreen.WorkingArea;
@@ -74,34 +79,29 @@ public sealed class WindowsProtectUserUI : ApplicationContext {
       else{x=wa.Left+Math.Max(0,(wa.Width-w)/2);y=wa.Top+Math.Max(0,(wa.Height-h)/2);}
       f.Location=new Point(x,y);
 
-      var header=new Panel{Dock=DockStyle.Top,Height=56,BackColor=Color.FromArgb(17,24,39)};
-      var headerText=new Label{
-        Text=f.Text,Dock=DockStyle.Fill,ForeColor=Color.White,
-        Font=new Font("Segoe UI Semibold",14),TextAlign=ContentAlignment.MiddleLeft,
-        Padding=new Padding(18,0,18,0)
-      };
-      header.Controls.Add(headerText);
-
-      var body=new Label{
-        Text=message,Left=20,Top=78,Width=w-40,Height=h-142,
-        ForeColor=Color.FromArgb(31,41,55),Font=new Font("Segoe UI",10.5f),
-        TextAlign=ContentAlignment.TopLeft,AutoEllipsis=true
-      };
-
+      var footer=new Panel{Name="DialogFooter",Dock=DockStyle.Bottom,Height=62,BackColor=SystemColors.Control};
       var ok=new Button{
-        Text="OK",Width=92,Height=34,Left=w-112,Top=h-52,
-        FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(37,99,235),
-        ForeColor=Color.White,Font=new Font("Segoe UI Semibold",9)
+        Name="DialogOK",
+        Text="OK",Width=90,Height=30,Left=w-110,Top=16,
+        Anchor=AnchorStyles.Right|AnchorStyles.Bottom,UseVisualStyleBackColor=true,
+        DialogResult=DialogResult.OK,AccessibleName="Close WindowsProtect message"
       };
-      ok.FlatAppearance.BorderSize=0;
-      ok.Click+=(s,e)=>f.Close();
-
-      f.Controls.Add(header);
-      f.Controls.Add(body);
-      f.Controls.Add(ok);
-      f.AcceptButton=ok;
-      f.ShowDialog();
-    }
+      footer.Controls.Add(ok);f.Controls.Add(footer);f.AcceptButton=ok;f.CancelButton=ok;
+      var icon=kind=="information"?SystemIcons.Information:kind=="error"?SystemIcons.Error:SystemIcons.Warning;
+      f.Icon=icon;
+      var picture=new PictureBox{Name="DialogIcon",Image=icon.ToBitmap(),SizeMode=PictureBoxSizeMode.CenterImage,Location=new Point(24,22),Size=new Size(40,40)};
+      var heading=new Label{
+        Text=String.IsNullOrWhiteSpace(title)?"WindowsProtect":title,AutoSize=false,
+        Font=new Font("Segoe UI",13),Location=new Point(84,22),Size=new Size(w-108,58),ForeColor=SystemColors.WindowText
+      };
+      var body=new RichTextBox{
+        Name="DialogMessage",
+        Text=message,ReadOnly=true,BorderStyle=BorderStyle.None,BackColor=SystemColors.Window,ForeColor=SystemColors.WindowText,
+        Font=f.Font,DetectUrls=false,WordWrap=true,ScrollBars=RichTextBoxScrollBars.Vertical,
+        Location=new Point(84,86),Size=new Size(w-108,h-164),TabStop=false
+      };
+      f.Controls.Add(picture);f.Controls.Add(heading);f.Controls.Add(body);
+      return f;
   }
 
   [STAThread]

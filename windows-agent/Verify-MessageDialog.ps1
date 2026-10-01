@@ -1,8 +1,12 @@
 $ErrorActionPreference='Stop'
-. ./windows-agent/WindowsProtect_MessageDialog.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$assembly=[Reflection.Assembly]::LoadFile((Join-Path $PWD 'WindowsProtect_UserUI.exe'))
+$type=$assembly.GetType('WindowsProtectUserUI')
+$build=$type.GetMethod('BuildMessage',[Reflection.BindingFlags]'Static,NonPublic')
 function Check($condition,$message){if(-not $condition){throw $message}}
 foreach($size in @('compact','standard','large')){
- $form=New-WindowsProtectDialog -Title 'WindowsProtect support notice' -Message ('Long message content. '*60) -Size $size -Kind warning
+ $form=$build.Invoke($null,@('WindowsProtect support notice',('Long message content. '*60),$size,'center','warning'))
  try{
   $form.Show();[Windows.Forms.Application]::DoEvents()
   Check ($form.Text -eq 'WindowsProtect') 'Dialog does not identify WindowsProtect.'

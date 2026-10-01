@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Management;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -17,7 +16,7 @@ internal static class WindowsProtectRemoval {
   const string Stage=@"C:\ProgramData\WindowsProtectRemoval";
   const string Data=@"C:\ProgramData\WindowsProtect";
   const string Install=@"C:\Program Files\Common Files\DeviceSupport";
-  const string Helper=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.ps1";
+  const string Helper=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.exe";
   const string BaseUrl="https://devicehost.vercel.app";
   const string Credential="WindowsProtect/LocalWindowsAccount";
   [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct TestCredential {
@@ -30,9 +29,11 @@ internal static class WindowsProtectRemoval {
   [DllImport("wtsapi32.dll",SetLastError=true)] static extern bool WTSQueryUserToken(uint session,out IntPtr token);
   [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr pointer);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool MoveFileEx(string existing,string replacement,uint flags);
   [StructLayout(LayoutKind.Sequential)] struct Session { public int id; public IntPtr station; public int state; }
 
   static int Main(string[] args){
+    if(args.Length==1 && args[0]=="--self-test-sleep"){Thread.Sleep(10000);return 0;}
     if(args.Length==1 && args[0]=="--self-test") return SelfTest();
     if(args.Length!=0 || !new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator)) return 1;
     bool created;
@@ -103,11 +104,11 @@ internal static class WindowsProtectRemoval {
   static bool ServiceExists(string name){using(var key=Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\"+name)) return key!=null;}
   static void StopProtection(){
     if(!ServiceExists("DeviceSupportHost")) return;
-    Run("sc.exe","config DeviceSupportHost start= disabled",15000,true);
+    WindowsServiceTools.SetStartType("DeviceSupportHost",4);
     using(var service=new ServiceController("DeviceSupportHost")){
       if(service.Status!=ServiceControllerStatus.Stopped){service.Stop();service.WaitForStatus(ServiceControllerStatus.Stopped,TimeSpan.FromSeconds(30));}
     }
-    Run("sc.exe","delete DeviceSupportHost",15000,true);
+    WindowsServiceTools.Remove("DeviceSupportHost");
     for(int i=0;i<20 && ServiceExists("DeviceSupportHost");i++) Thread.Sleep(500);
     if(ServiceExists("DeviceSupportHost")) throw new IOException("Protection service is still present.");
   }
@@ -138,12 +139,7 @@ internal static class WindowsProtectRemoval {
   }
   static List<int> HelperProcesses(){
     var ids=new List<int>();
-    using(var query=new ManagementObjectSearcher("SELECT ProcessId,CommandLine FROM Win32_Process WHERE Name='powershell.exe'")){
-      foreach(ManagementObject process in query.Get()){
-        var command=Convert.ToString(process["CommandLine"]??"");
-        if(Regex.IsMatch(command,@"-File\s+""?"+Regex.Escape(Helper)+@"(?:""|\s|$)",RegexOptions.IgnoreCase)) ids.Add(Convert.ToInt32(process["ProcessId"]));
-      }
-    }
+    foreach(var process in Process.GetProcessesByName("WindowsProtect_UserUI"))using(process){try{if(process.MainModule.FileName.Equals(Helper,StringComparison.OrdinalIgnoreCase))ids.Add(process.Id);}catch{ids.Add(process.Id);}}
     return ids;
   }
   static void RemoveHelper(){
@@ -196,11 +192,13 @@ internal static class WindowsProtectRemoval {
     directory.Delete();
   }
   static void FinalCleanup(string id){
-    // Fixed paths, hex ID only. The detached script deletes its own temporary
-    // file after the remover exits and releases its executable.
-    var script=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),"Temp","WindowsProtectCleanup-"+id+".cmd");
-    File.WriteAllText(script,"@echo off\r\nfor /l %%i in (1,1,30) do (\r\n ping 127.0.0.1 -n 3 >nul\r\n rmdir /s /q \""+Stage+"\" 2>nul\r\n if not exist \""+Stage+"\" goto done\r\n)\r\n:done\r\ndel \"%~f0\"\r\n");
-    Process.Start(new ProcessStartInfo("cmd.exe","/d /c \""+script+"\""){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Path.GetPathRoot(Stage)});
+    // The running remover cannot delete itself. Windows removes this fixed,
+    // already-empty staging directory at the next reboot without a script.
+    if(Directory.Exists(Stage)){
+      foreach(var file in Directory.GetFiles(Stage,"*",SearchOption.AllDirectories))MoveFileEx(file,null,4);
+      var directories=new List<string>(Directory.GetDirectories(Stage,"*",SearchOption.AllDirectories));directories.Sort((a,b)=>b.Length.CompareTo(a.Length));
+      foreach(var directory in directories)MoveFileEx(directory,null,4);MoveFileEx(Stage,null,4);
+    }
     Run("schtasks.exe","/Delete /TN \"WindowsProtect Removal\" /F",15000,false);
   }
   static int SelfTest(){
@@ -219,7 +217,7 @@ internal static class WindowsProtectRemoval {
       if(CredDelete(target,1,0) || Marshal.GetLastWin32Error()!=1168) return 1;
     }finally{CredDelete(target,1,0);Marshal.FreeCoTaskMem(memory);Array.Clear(bytes,0,bytes.Length);}
     bool timedOut=false;
-    try{Run("powershell.exe","-NoProfile -NonInteractive -Command Start-Sleep -Seconds 10",200,true);}catch(IOException){timedOut=true;}
+    try{Run(Process.GetCurrentProcess().MainModule.FileName,"--self-test-sleep",200,true);}catch(IOException){timedOut=true;}
     if(!timedOut) return 1;
     Console.WriteLine("Removal self-test: fixed support paths validated; fixture files and Windows credential removed; hung operation bounded; no production services or credentials touched.");
     return 0;

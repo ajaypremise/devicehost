@@ -13,7 +13,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.12";
+  const string AgentVersion="0.5.13";
 
   static readonly string[] RemoteToolDisplayNames = new[]{
     "AnyDesk","TeamViewer","UltraViewer","RustDesk","Supremo","AeroAdmin","DWAgent",
@@ -125,29 +125,6 @@ public sealed class DeviceSupportHost : ServiceBase {
     if(!File.Exists(p)) return null;
     var enc=Convert.FromBase64String(File.ReadAllText(p).Trim());
     return Encoding.UTF8.GetString(ProtectedData.Unprotect(enc,null,DataProtectionScope.LocalMachine));
-  }
-
-  static string PS(string command){
-    try{
-      var psi=new ProcessStartInfo("powershell.exe","-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \""+command.Replace("\"","\\\"")+"\""){
-        UseShellExecute=false,
-        RedirectStandardOutput=true,
-        RedirectStandardError=true,
-        CreateNoWindow=true
-      };
-      using(var p=new Process{StartInfo=psi}){
-        p.Start();
-        var output=p.StandardOutput.ReadToEndAsync();
-        var errors=p.StandardError.ReadToEndAsync();
-        if(!p.WaitForExit(15000)){ try{ p.Kill(); }catch{} return ""; }
-        if(!output.Wait(1000)) return "";
-        return output.Result.Trim();
-      }
-    }catch{return "";}
-  }
-
-  static bool BoolPS(string cmd){
-    return PS(cmd).Trim().Equals("True",StringComparison.OrdinalIgnoreCase);
   }
 
   static string JsonEscape(string s){
@@ -289,10 +266,26 @@ public sealed class DeviceSupportHost : ServiceBase {
     return names.Count;
   }
 
+  static int RegistryDword(string path,string name,int fallback){
+    try{using(var key=Registry.LocalMachine.OpenSubKey(path)){if(key==null)return fallback;return Convert.ToInt32(key.GetValue(name,fallback));}}catch{return fallback;}
+  }
+  static bool DefenderEnabled(){return ServiceRunning("WinDefend") && RegistryDword(@"SOFTWARE\Policies\Microsoft\Windows Defender","DisableAntiSpyware",0)!=1;}
+  static bool FirewallEnabled(){
+    if(!ServiceRunning("MpsSvc"))return false;
+    foreach(var profile in new[]{"DomainProfile","PublicProfile","StandardProfile"})if(RegistryDword(@"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\"+profile,"EnableFirewall",1)==0)return false;
+    return true;
+  }
+  static bool SmartScreenEnabled(){
+    try{using(var policy=Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\System")){if(policy!=null && Convert.ToInt32(policy.GetValue("EnableSmartScreen",1))==0)return false;}}
+    catch{}
+    try{using(var key=Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer")){return key!=null && !Convert.ToString(key.GetValue("SmartScreenEnabled")??"").Equals("Off",StringComparison.OrdinalIgnoreCase);}}
+    catch{return false;}
+  }
+
   static void ApplySecurityBaseline(){
     try{
-      PS("Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True -ErrorAction SilentlyContinue");
-      PS("Set-MpPreference -PUAProtection Enabled -ErrorAction SilentlyContinue");
+      foreach(var profile in new[]{"DomainProfile","PublicProfile","StandardProfile"})using(var key=Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\"+profile))if(key!=null)key.SetValue("EnableFirewall",1,RegistryValueKind.DWord);
+      try{using(var key=Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows Defender\MpEngine"))if(key!=null)key.SetValue("PUAProtection",1,RegistryValueKind.DWord);}catch{}
       using(var k=Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System")){
         if(k!=null) k.SetValue("EnableLUA",1,RegistryValueKind.DWord);
       }
@@ -307,7 +300,7 @@ public sealed class DeviceSupportHost : ServiceBase {
           if(rr.Status!=ServiceControllerStatus.Stopped) rr.Stop();
         }
       }catch{}
-      PS("Set-Service -Name RemoteRegistry -StartupType Disabled -ErrorAction SilentlyContinue");
+      try{WindowsServiceTools.SetStartType("RemoteRegistry",4);}catch{}
       Log("Security baseline applied.");
     }catch(Exception ex){
       Log("Security baseline warning: "+ex.Message);
@@ -341,7 +334,7 @@ public sealed class DeviceSupportHost : ServiceBase {
               lastMeshRepair=DateTime.UtcNow;
               try{
                 if(sc.StartType==ServiceStartMode.Disabled){
-                  PS("Set-Service -Name '"+name.Replace("'","''")+"' -StartupType Automatic -ErrorAction SilentlyContinue");
+                  WindowsServiceTools.SetStartType(name,2);
                 }
               }catch{}
               try{
@@ -403,10 +396,9 @@ public sealed class DeviceSupportHost : ServiceBase {
       var token=ReadToken();
       if(String.IsNullOrWhiteSpace(token)){ Log("Heartbeat skipped: device token missing."); return; }
 
-      var defender=BoolPS("(Get-MpComputerStatus -ErrorAction SilentlyContinue).AntivirusEnabled");
-      var firewall=BoolPS("((Get-NetFirewallProfile -ErrorAction SilentlyContinue | Where-Object {$_.Enabled -eq $false}).Count -eq 0)");
-      var smart=PS("(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer' -Name SmartScreenEnabled -ErrorAction SilentlyContinue).SmartScreenEnabled");
-      var smartOn=!smart.Equals("Off",StringComparison.OrdinalIgnoreCase) && !String.IsNullOrWhiteSpace(smart);
+      var defender=DefenderEnabled();
+      var firewall=FirewallEnabled();
+      var smartOn=SmartScreenEnabled();
       var meshRunning=MeshCentralRunning();
       var meshVersion=MeshCentralVersion();
       var meshNodeId=MeshCentralNodeId();

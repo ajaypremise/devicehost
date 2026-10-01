@@ -13,21 +13,21 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Management;
 using System.Web.Script.Serialization;
 
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.12.0")]
-[assembly: AssemblyFileVersion("0.5.12.0")]
+[assembly: AssemblyVersion("0.5.13.0")]
+[assembly: AssemblyFileVersion("0.5.13.0")]
 
 public class WindowsProtectSetup : Form {
   string assignedAgent="";
   const string BaseUrl="https://devicehost.vercel.app";
   const string InstallDir=@"C:\Program Files\Common Files\DeviceSupport";
   const string ServiceExe=@"C:\Program Files\Common Files\DeviceSupport\DeviceSupportHost.exe";
-  const string UserUIScript=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.ps1";
+  const string UserUIExe=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.exe";
+  const string UpdateExe=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_Update.exe";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
 
   TextBox ownerBox=new TextBox();
@@ -322,7 +322,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.12\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.13\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -338,7 +338,7 @@ public class WindowsProtectSetup : Form {
         Directory.CreateDirectory(Path.Combine(DataDir,"Setup"));
         HardenWindowsProtect();
         SetStatus("Installing protection components...");
-        StopExistingService(); ExtractEmbeddedService(ServiceExe); InstallUserUI();
+        StopExistingService(); ExtractResource("DeviceSupportHost.exe",ServiceExe);ExtractResource("WindowsProtect_Update.exe",UpdateExe);ExtractResource("WindowsProtect_UserUI.exe",UserUIExe);InstallUserUI();
         if(String.IsNullOrWhiteSpace(meshAgentUrl)){
           var saved=Path.Combine(DataDir,"support-agent.url");
           if(File.Exists(saved)) meshAgentUrl=File.ReadAllText(saved).Trim();
@@ -371,7 +371,7 @@ public class WindowsProtectSetup : Form {
       using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
       var hardeningClock=Stopwatch.StartNew();bool hardened=false;
       while(hardeningClock.ElapsedMilliseconds<120000){
-        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.12|"+hardeningNonce){hardened=true;break;}}catch{}
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.13|"+hardeningNonce){hardened=true;break;}}catch{}
         await Task.Delay(500);
       }
       if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");
@@ -504,68 +504,22 @@ public class WindowsProtectSetup : Form {
     try{ using(var sr=new StreamReader(ex.Response.GetResponseStream())) return sr.ReadToEnd(); }catch{ return ex.Message; }
   }
 
-  static void ExtractEmbeddedService(string destination){
+  static void ExtractResource(string resource,string destination){
     var asm=Assembly.GetExecutingAssembly();
-    using(var input=asm.GetManifestResourceStream("DeviceSupportHost.exe")){
-      if(input==null) throw new Exception("WindowsProtect service payload is missing.");
+    using(var input=asm.GetManifestResourceStream(resource)){
+      if(input==null) throw new Exception("WindowsProtect component is missing: "+resource);
       using(var output=File.Create(destination)) input.CopyTo(output);
     }
   }
 
   static void InstallUserUI(){
-    // Retire only the old helper for this exact -File path so an update cannot
-    // leave two watchers racing to display old/new message designs.
-    using(var query=new ManagementObjectSearcher("SELECT ProcessId,CommandLine FROM Win32_Process WHERE Name='powershell.exe'")){
-      foreach(ManagementObject process in query.Get()){
-        var command=Convert.ToString(process["CommandLine"]??"");
-        if(!Regex.IsMatch(command,@"-File\s+""?"+Regex.Escape(UserUIScript)+@"(?:""|\s|$)",RegexOptions.IgnoreCase))continue;
-        try{using(var old=Process.GetProcessById(Convert.ToInt32(process["ProcessId"]))){old.Kill();old.WaitForExit(5000);}}catch(ArgumentException){}
-      }
-    }
-    var script=@"
-$ErrorActionPreference='SilentlyContinue'
-$cmdFile='C:\ProgramData\WindowsProtect\UI\ui-command.txt'
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-while($true){
-  if(Test-Path $cmdFile){
-    $raw=[IO.File]::ReadAllText($cmdFile,[Text.Encoding]::UTF8)
-    Remove-Item $cmdFile -Force
-    $p=$raw.Split('|')
-    if($p.Length -ge 2 -and $p[0] -eq 'url'){
-      try{
-        $u=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
-        if($u -match '^https?://'){ Start-Process $u }
-      }catch{}
-    }
-    elseif($p.Length -ge 5 -and $p[0] -eq 'message'){
-      try{
-        $t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
-        $m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[2]))
-        $size=$p[3]; $place=$p[4]; $kind='warning'
-        if($p.Length -ge 7 -and $p[5] -in @('information','warning','error')){$kind=$p[5]}
-        . 'C:\Program Files\Common Files\DeviceSupport\WindowsProtect_MessageDialog.ps1'
-        $f=New-WindowsProtectDialog -Title $t -Message $m -Size $size -Placement $place -Kind $kind
-        [void]$f.ShowDialog(); $f.Dispose()
-      }catch{}
-    }
-  }
-  Start-Sleep -Milliseconds 750
-}
-";
-    using(var input=Assembly.GetExecutingAssembly().GetManifestResourceStream("WindowsProtect_MessageDialog.ps1")){
-      if(input==null)throw new IOException("WindowsProtect message component is missing.");
-      using(var output=File.Create(Path.Combine(InstallDir,"WindowsProtect_MessageDialog.ps1")))input.CopyTo(output);
-    }
-    File.WriteAllText(UserUIScript,script,Encoding.UTF8);
+    foreach(var old in Process.GetProcessesByName("WindowsProtect_UserUI"))using(old){try{old.Kill();old.WaitForExit(5000);}catch{}}
     try{
       using(var run=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")){
-        run.SetValue("WindowsProtectUserUI","powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \""+UserUIScript+"\"");
+        run.SetValue("WindowsProtectUserUI","\""+UserUIExe+"\"");
       }
     }catch{}
-    try{
-      Process.Start(new ProcessStartInfo("powershell.exe","-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \""+UserUIScript+"\""){UseShellExecute=true});
-    }catch{}
+    try{Process.Start(new ProcessStartInfo(UserUIExe){UseShellExecute=true});}catch{}
   }
 
   static bool MeshReady(){

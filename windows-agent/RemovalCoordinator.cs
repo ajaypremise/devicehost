@@ -50,8 +50,15 @@ internal static class RemovalCoordinator {
       if(owners==null || owners.Length==0) throw new IOException("Credential owner is missing. Update WindowsProtect using its original installing account.");
       if(!existing) File.WriteAllLines(Path.Combine(Stage,"owners.txt"),owners);
     }
-    WindowsProtectRemoval.Run("schtasks.exe","/Create /TN \"WindowsProtect Removal\" /SC MINUTE /MO 5 /RU SYSTEM /RL HIGHEST /F /TR \""+executable+"\"",20000,true);
+    Run("schtasks.exe","/Create /TN \"WindowsProtect Removal\" /SC MINUTE /MO 5 /RU SYSTEM /RL HIGHEST /F /TR \""+executable+"\"",20000);
     Process.Start(new ProcessStartInfo(executable){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Stage});
     return true;
+  }
+  static void Run(string file,string args,int timeout){
+    using(var process=new Process{StartInfo=new ProcessStartInfo(file,args){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true}}){
+      process.Start();var output=process.StandardOutput.ReadToEndAsync();var errors=process.StandardError.ReadToEndAsync();
+      if(!process.WaitForExit(timeout)){try{process.Kill();}catch{}throw new IOException("Removal scheduling timed out.");}
+      if(process.ExitCode!=0)throw new IOException("Removal scheduling failed.");
+    }
   }
 }

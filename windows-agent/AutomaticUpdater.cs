@@ -9,7 +9,7 @@ using Microsoft.Win32;
 
 internal static class AutomaticUpdater {
   const string Endpoint="https://devicehost.vercel.app/api/agent/update";
-  const string ServiceExe=@"C:\Program Files\Common Files\DeviceSupport\DeviceSupportHost.exe";
+  const string UpdateExe=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_Update.exe";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
   static readonly object gate=new object();
   static DateTime nextCheck=DateTime.MinValue;
@@ -34,10 +34,9 @@ internal static class AutomaticUpdater {
       Directory.CreateDirectory(DataDir);var staged=Path.Combine(DataDir,"DeviceSupportHost."+version+".new");
       using(var client=new TimedClient())client.DownloadFile(url,staged);
       var length=new FileInfo(staged).Length;if(length<10240||length>20*1024*1024||!Sha256(staged).Equals(sha,StringComparison.OrdinalIgnoreCase)){File.Delete(staged);throw new IOException("Downloaded agent verification failed.");}
-      var script=Path.Combine(DataDir,"apply-agent-update.ps1");var backup=Path.Combine(DataDir,"DeviceSupportHost.previous.exe");
-      var content="$ErrorActionPreference='Stop'\r\n$service='DeviceSupportHost'\r\n$target='"+ServiceExe.Replace("'","''")+"'\r\n$staged='"+staged.Replace("'","''")+"'\r\n$backup='"+backup.Replace("'","''")+"'\r\ntry {\r\n Stop-Service -Name $service -Force -ErrorAction SilentlyContinue\r\n $limit=(Get-Date).AddSeconds(45); while((Get-Service $service).Status -ne 'Stopped' -and (Get-Date) -lt $limit){Start-Sleep -Milliseconds 500}\r\n if((Get-Service $service).Status -ne 'Stopped'){throw 'Service did not stop'}\r\n Copy-Item -LiteralPath $target -Destination $backup -Force\r\n Move-Item -LiteralPath $staged -Destination $target -Force\r\n Start-Service -Name $service\r\n Start-Sleep -Seconds 3\r\n if((Get-Service $service).Status -ne 'Running'){throw 'Updated service did not start'}\r\n Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue\r\n} catch {\r\n if(Test-Path $backup){Copy-Item -LiteralPath $backup -Destination $target -Force; Start-Service -Name $service -ErrorAction SilentlyContinue}\r\n} finally {Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue}\r\n";
-      File.WriteAllText(script,content,new UTF8Encoding(true));
-      Process.Start(new ProcessStartInfo("powershell.exe","-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\""){UseShellExecute=false,CreateNoWindow=true});
+      if(!File.Exists(UpdateExe))throw new IOException("WindowsProtect update component is missing.");
+      File.WriteAllLines(Path.Combine(DataDir,"agent-update.txt"),new[]{version,sha,Path.GetFileName(staged)},new UTF8Encoding(false));
+      Process.Start(new ProcessStartInfo(UpdateExe){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=DataDir});
       lock(gate)nextCheck=DateTime.UtcNow.AddHours(6);
     }catch{}
   }
