@@ -17,8 +17,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.7.0")]
-[assembly: AssemblyFileVersion("0.5.7.0")]
+[assembly: AssemblyVersion("0.5.8.0")]
+[assembly: AssemblyFileVersion("0.5.8.0")]
 
 public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
@@ -167,7 +167,7 @@ public class WindowsProtectSetup : Form {
     AddRow(footer,progress,0,4);
     status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(100,108,120));
     AddRow(footer,status,0,0);
-    AddRow(footer,TextLabel("TEST BUILD  /  0.5.7",8,Color.FromArgb(120,127,138)),4,0);
+    AddRow(footer,TextLabel("TEST BUILD  /  0.5.8",8,Color.FromArgb(120,127,138)),4,0);
 
     try{
       var tokenPath=Path.Combine(DataDir,"device.token");
@@ -296,7 +296,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.7-test\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.8-test\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -638,6 +638,12 @@ while($true){
         Comment="Stored locally by WindowsProtect. Never uploaded."
       };
       if(!CredWrite(ref cred,0)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+      using(var key=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\WindowsProtect")){
+        var owners=new System.Collections.Generic.List<string>(key.GetValue("CredentialOwnerSids") as string[] ?? new string[0]);
+        var sid=System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
+        if(!owners.Contains(sid)) owners.Add(sid);
+        key.SetValue("CredentialOwnerSids",owners.ToArray(),Microsoft.Win32.RegistryValueKind.MultiString);
+      }
     }finally{
       for(int i=0;i<bytes.Length;i++) Marshal.WriteByte(blob,i,0);
       Marshal.FreeCoTaskMem(blob);

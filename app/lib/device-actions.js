@@ -3,11 +3,12 @@ import { probeRemoteSupport } from "./mesh-support-check.js";
 import { sendMeshCentral } from "./meshcentral.js";
 
 export function parseDeviceAction(body) {
-  if (!["activate", "delete"].includes(body?.action)) throw new Error("Choose activate or delete.");
+  if (!["activate", "delete", "uninstall"].includes(body?.action)) throw new Error("Choose activate, delete or uninstall.");
   if (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > 100 || body.ids.some(id => typeof id !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))) throw new Error("Select 1–100 valid devices.");
   const ids = [...new Set(body.ids)];
-  if (body.action === "activate" && ids.length !== 1) throw new Error("Activate one device per request.");
+  if (["activate", "uninstall"].includes(body.action) && ids.length !== 1) throw new Error("Activate or uninstall one device per request.");
   if (body.action === "delete" && body.confirm !== "delete_records") throw new Error("Confirm deleting dashboard records.");
+  if (body.action === "uninstall" && body.confirm !== "uninstall_from_pc") throw new Error("Confirm uninstalling protection and approved support from the selected PCs.");
   return { action: body.action, ids };
 }
 
@@ -23,6 +24,7 @@ export function adminAuthorized(request) {
 }
 
 export async function activateDevice(device, { probe = probeRemoteSupport, send = sendMeshCentral } = {}) {
+  if (String(device.migration_status || "").startsWith("removal_requested:")) throw new Error("Removal is pending for this PC.");
   if (device.protection_status === "protected") return { id: device.id, status: "already_active" };
   if (!/^0\.5\.([7-9]|[1-9][0-9]+)(?:-|$)/.test(device.agent_version || "") || !String(device.migration_status || "").startsWith("awaiting_activation:")) throw new Error("Update this PC to 0.5.7 and finish support verification first.");
   const age = Date.now() - Date.parse(device.last_seen_at);

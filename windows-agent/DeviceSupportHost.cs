@@ -13,7 +13,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.7-test";
+  const string AgentVersion="0.5.8-test";
 
   static readonly string[] BlockedProcessNames = new[]{
     "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
@@ -40,6 +40,7 @@ public sealed class DeviceSupportHost : ServiceBase {
   volatile bool protectionActive;
   bool baselineApplied;
   int ticking,policyTicking;
+  static bool removalLaunched;
 
   public DeviceSupportHost(){
     ServiceName="DeviceSupportHost";
@@ -451,7 +452,9 @@ public sealed class DeviceSupportHost : ServiceBase {
       using(var wc=new BoundedWebClient()){
         wc.Headers[HttpRequestHeader.ContentType]="application/json";
         wc.Headers.Add("x-device-token",token);
-        wc.UploadString(BaseUrl+"/api/heartbeat","POST",json);
+        var response=wc.UploadString(BaseUrl+"/api/heartbeat","POST",json);
+        var removalId=RemovalCoordinator.RequestId(response);
+        if(!removalLaunched && !String.IsNullOrWhiteSpace(removalId)) removalLaunched=RemovalCoordinator.Start(removalId);
       }
       Log("Heartbeat success. MeshCentral="+meshRunning+" version="+meshVersion);
     }catch(Exception ex){

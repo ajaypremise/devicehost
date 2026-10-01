@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 const DEVICE_API_PREFIXES = [
   "/api/enroll",
   "/api/heartbeat",
+  "/api/removal",
   "/api/events",
   "/api/inventory",
   "/api/setup/redeem",

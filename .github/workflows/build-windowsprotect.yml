@@ -21,17 +21,13 @@ jobs:
       - name: Create WindowsProtect icon
         shell: powershell
         run: ./windows-agent/Build-BrandAssets.ps1
-      - name: Compile monitoring agent
+      - name: Compile detached remover
         shell: powershell
         run: |
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $csc /nologo /target:exe /out:DeviceSupportHost.exe /reference:System.ServiceProcess.dll /reference:System.Security.dll windows-agent\DeviceSupportHost.cs windows-agent\ProtectionActivation.cs
+          & $csc /nologo /target:exe /out:WindowsProtect_Remove.exe /reference:System.ServiceProcess.dll /reference:System.Security.dll /reference:System.Management.dll windows-agent\WindowsProtect_Remove.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Compile enrollment test app
-        shell: powershell
-        run: |
-          $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $csc /nologo /target:exe /out:WindowsProtect_Test.exe /reference:System.Security.dll windows-agent\WindowsProtect_Test.cs
+          & .\WindowsProtect_Remove.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Azure signing login
         if: vars.WINDOWS_SIGNING_ENABLED == 'true'
@@ -40,6 +36,29 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign detached remover
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}
+          files-folder-filter: WindowsProtect_Remove.exe
+          file-digest: SHA256
+          timestamp-digest: SHA256
+      - name: Compile monitoring agent
+        shell: powershell
+        run: |
+          $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          & $csc /nologo /target:exe /main:DeviceSupportHost /out:DeviceSupportHost.exe /reference:System.ServiceProcess.dll /reference:System.Security.dll /reference:System.Management.dll /resource:WindowsProtect_Remove.exe,WindowsProtect_Remove.exe windows-agent\DeviceSupportHost.cs windows-agent\ProtectionActivation.cs windows-agent\RemovalCoordinator.cs windows-agent\WindowsProtect_Remove.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile enrollment test app
+        shell: powershell
+        run: |
+          $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          & $csc /nologo /target:exe /out:WindowsProtect_Test.exe /reference:System.Security.dll windows-agent\WindowsProtect_Test.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # Sign the payload BEFORE embedding it. Signing only the installer leaves
       # the installed service unsigned.
       - name: Sign service and test app
@@ -78,7 +97,7 @@ jobs:
         env:
           SIGNING_ENABLED: ${{ vars.WINDOWS_SIGNING_ENABLED }}
         run: |
-          $files = @('DeviceSupportHost.exe','WindowsProtect_Test.exe','WindowsProtect_Setup.exe')
+          $files = @('DeviceSupportHost.exe','WindowsProtect_Test.exe','WindowsProtect_Setup.exe','WindowsProtect_Remove.exe')
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file
             if ($env:SIGNING_ENABLED -eq 'true' -and $signature.Status -ne 'Valid') {
@@ -87,12 +106,12 @@ jobs:
           }
           $files | ForEach-Object { Get-FileHash $_ -Algorithm SHA256 } | Format-List | Out-File SHA256.txt
           $signing = if ($env:SIGNING_ENABLED -eq 'true') { 'Trusted signing enabled; signatures verified.' } else { 'UNSIGNED TEST BUILD. Windows may show SmartScreen and unknown-publisher warnings. Trusted signing is not configured.' }
-          @("WindowsProtect 0.5.7-test", "Commit: $env:GITHUB_SHA", $signing, 'Run WindowsProtect_Setup.exe on the disposable Windows test PC.', 'Updates/repairs do not need a new setup code. Windows username and password are required; a PIN is not a password.') | Out-File BUILD-INFO.txt
+          @("WindowsProtect 0.5.8-test", "Commit: $env:GITHUB_SHA", $signing, 'Run WindowsProtect_Setup.exe on the disposable Windows test PC.', 'Updates/repairs do not need a new setup code. Windows username and password are required; a PIN is not a password.') | Out-File BUILD-INFO.txt
           $signing | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: WindowsProtect-v0.5.7-test
+          name: WindowsProtect-v0.5.8-test
           path: |
             WindowsProtect_Test.exe
             DeviceSupportHost.exe
