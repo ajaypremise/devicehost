@@ -24,7 +24,10 @@ test('activation targets enrolled PC and requires fresh desktop proof before sen
   assert.ok(command.cmds.includes(proof.nonce));assert.ok(command.cmds.includes('activation.request'));assert.ok(command.cmds.includes('ExecuteCommand(128)'));
 });
 test('offline, legacy or unverified devices cannot receive early activation',async()=>{
-  for(const change of [{agent_version:'0.5.6-test'},{migration_status:'verifying_support'},{last_seen_at:new Date(Date.now()-180000).toISOString()}]) await assert.rejects(activateDevice({...device,...change},{probe:async()=>assert.fail('probe must not run'),send:async()=>assert.fail('command must not run')}));
+  for(const change of [{agent_version:'0.5.6-test'},{migration_status:'not_started'},{last_seen_at:new Date(Date.now()-180000).toISOString()}]) await assert.rejects(activateDevice({...device,...change},{probe:async()=>assert.fail('probe must not run'),send:async()=>assert.fail('command must not run')}));
+  const verifying={...device,migration_status:'verifying_support:'+new Date(Date.now()+60000).toISOString()};let verifyingCommand;
+  assert.equal((await activateDevice(verifying,{probe:async()=>{},send:async(c)=>{verifyingCommand=c;}})).status,'activation_requested');
+  assert.match(verifyingCommand.cmds,/SupportVerified/);
   await assert.rejects(activateDevice(device,{probe:async()=>{throw new Error('failure');},send:async()=>assert.fail('command sent without proof')}));
   assert.equal((await activateDevice({...device,protection_status:'protected'})).status,'already_active');
 });

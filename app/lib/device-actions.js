@@ -26,13 +26,15 @@ export function adminAuthorized(request) {
 export async function activateDevice(device, { probe = probeRemoteSupport, send = sendMeshCentral } = {}) {
   if (String(device.migration_status || "").startsWith("removal_requested:")) throw new Error("Removal is pending for this PC.");
   if (device.protection_status === "protected") return { id: device.id, status: "already_active" };
-  if (!/^0\.5\.([7-9]|[1-9][0-9]+)(?:-|$)/.test(device.agent_version || "") || !String(device.migration_status || "").startsWith("awaiting_activation:")) throw new Error("Update this PC to 0.5.7 and finish support verification first.");
+  if (!/^0\.5\.([7-9]|[1-9][0-9]+)(?:-|$)/.test(device.agent_version || "") || !/^(?:verifying_support|awaiting_activation):/.test(String(device.migration_status || ""))) throw new Error("Update this PC to 0.5.7 and wait for its setup window before activating protection.");
   const age = Date.now() - Date.parse(device.last_seen_at);
   if (!device.meshcentral_node_id || !Number.isFinite(age) || age < -5000 || age > 120000) throw new Error("This PC must be online with a recent support heartbeat.");
   const challenge = crypto.randomBytes(32).toString("hex");
   try { await probe(device.meshcentral_node_id, challenge); } catch { throw new Error("Secure support could not be verified. Activation was not requested."); }
   // The service requires the matching local proof written by the fresh probe.
   const script = "$ErrorActionPreference='Stop'; $d='C:\\ProgramData\\WindowsProtect\\Setup'; " +
+    "New-Item -Path 'HKLM:\\SOFTWARE\\WindowsProtect' -Force | Out-Null; " +
+    "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\WindowsProtect' -Name SupportVerified -Type DWord -Value 1; " +
     `[IO.File]::WriteAllText((Join-Path $d 'activation.request'),'${challenge}',[Text.Encoding]::ASCII); ` +
     "$s=Get-Service DeviceSupportHost; $s.ExecuteCommand(128); 'OK'";
   try { await send({ action: "runcommands", nodeids: [device.meshcentral_node_id], type: 2, cmds: script, runAsUser: 0, reply: true, responseid: `activate-${crypto.randomBytes(12).toString("hex")}` }); } catch { throw new Error("Activation delivery could not be confirmed. Check the PC status before retrying."); }
