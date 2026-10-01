@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import DeviceNameEditor from "./DeviceNameEditor";
 import RemoteActions from "./RemoteActions";
 import UltraViewerControl from "./UltraViewerControl";
+import { recentRemoteAccessAlerts, remoteAccessTool } from "../../lib/security-alerts.js";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,7 @@ export default async function DevicePage({ params }) {
   const mesh = device.remote_access_provider === "meshcentral";
   const remoteOn = mesh ? device.meshcentral_connected === true : device.rustdesk_service_running === true;
   const contact=contacts[0]?.details||{};
+  const remoteAlerts=recentRemoteAccessAlerts(events,Date.now(),24*7);
 
   return (
     <main className="shell wideShell">
@@ -89,6 +91,10 @@ export default async function DevicePage({ params }) {
         <StateBlock label="Remote support" value={remoteOn ? "Connected" : "Off"} state={remoteOn ? "good" : "bad"} note={mesh ? "MeshCentral" : (device.remote_access_provider || "Pending")} />
         <StateBlock label="Last seen" value={timeAgo(device.last_seen_at)} state={online ? "good" : "neutral"} note={device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : "No heartbeat yet"} />
       </section>
+
+      {remoteAlerts.length ? <section className="securityAlert detailSecurityAlert" role="alert">
+        <div className="securityAlertIcon">!</div><div><strong>Unauthorized remote access was blocked</strong><p>{remoteAccessTool(remoteAlerts[0])} · {timeAgo(remoteAlerts[0].created_at)} · {remoteAlerts.length} attempt{remoteAlerts.length===1?"":"s"} in 7 days</p></div>
+      </section> : null}
 
       <section className="quickActions">
         <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Remote desktop</strong><span>Open this device in MeshCentral</span></a>

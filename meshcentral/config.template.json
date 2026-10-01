@@ -24,6 +24,21 @@
         "expire": 120
       },
       "allowSavingDeviceCredentials": false,
+      "userConsentFlags": {
+        "desktopnotify": true,
+        "terminalnotify": true,
+        "filenotify": true,
+        "desktopprompt": false,
+        "terminalprompt": false,
+        "fileprompt": false,
+        "desktopprivacybar": true
+      },
+      "notificationMessages": {
+        "title": "WindowsProtect support activity",
+        "desktop": "{0} started a remote desktop session.",
+        "terminal": "{0} started a remote terminal session.",
+        "files": "{0} started a remote file session."
+      },
       "passwordRequirements": {
         "min": 14,
         "upper": 1,

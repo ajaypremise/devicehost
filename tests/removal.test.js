@@ -7,7 +7,7 @@ import { POST as heartbeat } from '../app/api/heartbeat/route.js';
 import { removalId,canProcessRemoval,canUninstall } from '../app/lib/removal.js';
 const id='12345678-1234-1234-1234-123456789abc', nonce='a'.repeat(64), token='test-device-token';
 process.env.SUPABASE_URL='https://db.test';process.env.SUPABASE_SECRET_KEY='server-secret';process.env.DASHBOARD_USER='test';process.env.DASHBOARD_PASSWORD='secret';
-const device={id,agent_version:'0.5.15-test',migration_status:`removal_requested:${nonce}`};
+const device={id,agent_version:'0.5.16-test',migration_status:`removal_requested:${nonce}`};
 const request=body=>new Request('https://dashboard.test/api/removal',{method:'POST',headers:{'x-device-token':token},body:JSON.stringify(body)});
 async function withFetch(mock,fn){const original=global.fetch;global.fetch=mock;try{await fn();}finally{global.fetch=original;}}
 test('uninstall request parsing rejects malformed IDs and older agents',()=>{
@@ -42,7 +42,7 @@ test('offline uninstall queues durable pending status and preserves dashboard re
 test('heartbeat preserves removal request and delivers it only to enrolled PC',async()=>{
  const calls=[];
  await withFetch(async(url,options)=>{calls.push({url,options});return Response.json([device]);},async()=>{
-  const result=await heartbeat(new Request('https://dashboard.test/api/heartbeat',{method:'POST',headers:{'x-device-token':token},body:JSON.stringify({migration_status:'completed',agent_version:'0.5.15-test'})}));
+  const result=await heartbeat(new Request('https://dashboard.test/api/heartbeat',{method:'POST',headers:{'x-device-token':token},body:JSON.stringify({migration_status:'completed',agent_version:'0.5.16-test'})}));
   assert.equal(result.status,200);assert.equal((await result.json()).removal_request,nonce);assert.equal(JSON.parse(calls[1].options.body).migration_status,undefined);assert.ok(calls[1].url.includes('migration_status=eq.removal_requested%3A'));
  });
 });

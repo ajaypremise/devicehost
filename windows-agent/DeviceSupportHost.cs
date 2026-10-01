@@ -13,7 +13,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.15";
+  const string AgentVersion="0.5.16";
 
   static readonly string[] RemoteToolDisplayNames = new[]{
     "AnyDesk","TeamViewer","UltraViewer","RustDesk","Supremo","AeroAdmin","DWAgent",
@@ -319,7 +319,8 @@ public sealed class DeviceSupportHost : ServiceBase {
       DateTime previous;var now=DateTime.UtcNow;
       if(lastBlocked.TryGetValue(name,out previous) && (now-previous).TotalMinutes<5)continue;
       lastBlocked[name]=now;reported++;
-      SendEvent("remote_tool_blocked","critical","Blocked unauthorized remote-access tool","Application: "+name);
+      QueueLocalRemoteAccessWarning(name);
+      SendRemoteAccessAlert(name);
       Log("Blocked remote-control application "+name+".");
     }
   }
@@ -371,6 +372,31 @@ public sealed class DeviceSupportHost : ServiceBase {
         wc.Headers.Add("x-device-token",token);
         wc.UploadString(BaseUrl+"/api/events","POST",body);
       }
+    }catch{}
+  }
+
+  static void SendRemoteAccessAlert(string tool){
+    try{
+      var token=ReadToken();
+      if(String.IsNullOrWhiteSpace(token))return;
+      var body="{\"event_type\":\"remote_access_blocked\",\"severity\":\"critical\",\"title\":\"Unauthorized remote access blocked\",\"details\":{\"tool\":\""+JsonEscape(tool)+"\",\"action\":\"blocked\",\"detected_at\":\""+DateTime.UtcNow.ToString("o")+"\"}}";
+      using(var wc=new BoundedWebClient()){
+        wc.Headers[HttpRequestHeader.ContentType]="application/json";
+        wc.Headers.Add("x-device-token",token);
+        wc.UploadString(BaseUrl+"/api/events","POST",body);
+      }
+    }catch{}
+  }
+
+  static void QueueLocalRemoteAccessWarning(string tool){
+    try{
+      var directory=Path.Combine(DataDir,"UI");Directory.CreateDirectory(directory);
+      var id=Guid.NewGuid().ToString("N");
+      var title=Convert.ToBase64String(Encoding.UTF8.GetBytes("Remote access blocked"));
+      var message=Convert.ToBase64String(Encoding.UTF8.GetBytes("WindowsProtect stopped "+(String.IsNullOrWhiteSpace(tool)?"an unauthorized remote-access tool":tool)+".\r\n\r\nIf you did not expect this, do not share passwords or payment information. Contact your trusted support person."));
+      var destination=Path.Combine(directory,"command-"+id+".txt");var temporary=destination+".tmp";
+      File.WriteAllText(temporary,"message|"+title+"|"+message+"|standard|center|error|",Encoding.UTF8);
+      if(File.Exists(destination))File.Delete(destination);File.Move(temporary,destination);
     }catch{}
   }
 

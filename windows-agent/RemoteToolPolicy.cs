@@ -70,6 +70,10 @@ internal static class RemoteToolPolicy {
   static bool Kill(Process process){
     try{var name=process.ProcessName;process.Kill();if(events.Count<100)events.Enqueue(name);return true;}catch{return false;}
   }
+  static void Report(string name){
+    var value=String.IsNullOrWhiteSpace(name)?"Unknown remote-access tool":name.Trim();
+    if(events.Count<100)events.Enqueue(value);
+  }
   // Fast enforcement never reads version resources, scans services or waits for
   // telemetry. Renamed-binary discovery runs independently below.
   internal static bool CheckAndBlock(Process process,bool identity){
@@ -99,8 +103,10 @@ internal static class RemoteToolPolicy {
         if(!KnownName(service.ServiceName) && !KnownMetadata(service.DisplayName,"","","") && !verdict.blocked)continue;
         // SYSTEM owns this operation. No global service policy or broad
         // company-name match is used, and unrelated services are untouched.
-        using(var key=Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\"+service.ServiceName,true))if(key!=null)key.SetValue("Start",4,RegistryValueKind.DWord);
-        if(service.Status!=ServiceControllerStatus.Stopped)service.Stop();
+        bool changed=false;
+        using(var key=Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\"+service.ServiceName,true))if(key!=null && Convert.ToInt32(key.GetValue("Start",3))!=4){key.SetValue("Start",4,RegistryValueKind.DWord);changed=true;}
+        if(service.Status!=ServiceControllerStatus.Stopped){service.Stop();changed=true;}
+        if(changed)Report(String.IsNullOrWhiteSpace(service.DisplayName)?service.ServiceName:service.DisplayName);
       }catch{}
     }
   }
