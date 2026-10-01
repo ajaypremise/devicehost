@@ -126,7 +126,7 @@ internal static class WindowsProtectRemoval {
           try{
             using(var identity=new WindowsIdentity(token)){
               var sid=identity.User.Value;
-              if(pending.Contains(sid)) using(var context=identity.Impersonate()) if(DeleteCredential()) pending.Remove(sid);
+              using(var context=identity.Impersonate()) if(DeleteCredential()) pending.Remove(sid);
             }
           }finally{CloseHandle(token);}
         }
@@ -154,7 +154,7 @@ internal static class WindowsProtectRemoval {
   static bool SupportProcesses(List<string> paths){
     foreach(var name in new[]{"meshagent","meshagent64","MeshAgent"}){
       foreach(var process in Process.GetProcessesByName(name)){
-        using(process){try{foreach(var path in paths) if(process.MainModule.FileName.Equals(path,StringComparison.OrdinalIgnoreCase)) return true;}catch{return true;}}
+        using(process){if(paths.Count==0) return true;try{foreach(var path in paths) if(process.MainModule.FileName.Equals(path,StringComparison.OrdinalIgnoreCase)) return true;}catch{return true;}}
       }
     }
     return false;
