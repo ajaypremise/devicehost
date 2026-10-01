@@ -189,7 +189,7 @@ public class WindowsProtectSetup : Form {
   }
 
   void LoadSetupPackage(Control enrollment){
-    var path=Path.Combine(Path.GetDirectoryName(Application.ExecutablePath),"WindowsProtect_Setup.json");
+    var path=Path.Combine(Path.GetDirectoryName(typeof(WindowsProtectSetup).Assembly.Location),"WindowsProtect_Setup.json");
     if(!File.Exists(path))return;
     try{
       if(new FileInfo(path).Length>4096)throw new IOException();
