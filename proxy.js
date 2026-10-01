@@ -10,11 +10,13 @@ const DEVICE_API_PREFIXES = [
   "/api/setup/verify-support",
 ];
 
+const PUBLIC_PATHS = ["/download", "/api/public/installer"];
+
 export function proxy(request) {
   const pathname = request.nextUrl.pathname;
 
   // Device endpoints authenticate themselves with enrollment/device tokens.
-  if (DEVICE_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  if (PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(path + "/")) || DEVICE_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 

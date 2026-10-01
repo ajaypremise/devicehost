@@ -228,6 +228,26 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
   .setupPanel form { grid-template-columns:1fr; }
 }
 
+.downloadPage { color-scheme:light; min-height:100vh; display:grid; place-items:center; padding:32px 16px; background:#f3f5f8; color:#17202b; }
+.downloadCard { width:min(620px,100%); background:#fff; border:1px solid #d9dee6; border-radius:12px; padding:clamp(24px,5vw,44px); box-shadow:0 16px 42px rgba(31,42,55,.09); }
+.downloadBrand { font-size:12px; letter-spacing:.15em; font-weight:800; color:#32475e; }
+.downloadCard h1 { margin:10px 0 12px; font-size:clamp(30px,7vw,44px); line-height:1.08; color:#111820; }
+.downloadIntro { margin:0 0 26px; color:#536273; line-height:1.6; }
+.publicDownloadForm { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.publicDownloadForm label { display:grid; gap:7px; color:#344252; font-size:13px; font-weight:650; }
+.optionalLabel { color:#778493; font-weight:500; }
+.publicDownloadForm input { width:100%; border:1px solid #bdc6d1; border-radius:7px; padding:12px; color:#17202b; background:#fff; font:inherit; outline:none; }
+.publicDownloadForm input:focus { border-color:#376a9c; box-shadow:0 0 0 3px rgba(55,106,156,.13); }
+.publicDownloadForm button { grid-column:1 / -1; border:1px solid #1c2732; border-radius:7px; background:#1c2732; color:#fff; padding:13px 16px; font:inherit; font-weight:750; cursor:pointer; }
+.publicDownloadForm button:disabled { opacity:.65; cursor:wait; }
+.downloadTrap { position:absolute !important; left:-10000px !important; width:1px !important; height:1px !important; }
+.downloadError,.downloadSuccess { grid-column:1 / -1; border-radius:7px; padding:12px 14px; font-size:13px; line-height:1.45; }
+.downloadError { border:1px solid #e1a1a7; background:#fff4f5; color:#9b1c2c; }
+.downloadSuccess { display:grid; gap:3px; border:1px solid #8ec8ac; background:#f0faf5; color:#165c3d; }
+.downloadSuccess span { color:#32644f; }
+.downloadPrivacy { margin:22px 0 0; padding-top:18px; border-top:1px solid #e2e6eb; color:#687687; font-size:12px; line-height:1.55; }
+@media (max-width:560px) { .publicDownloadForm { grid-template-columns:1fr; } }
+
 
 .inventoryTableWrap { border:1px solid var(--line); background:var(--panel); border-radius:14px; overflow:auto; }
 .inventoryTable { width:100%; border-collapse:collapse; min-width:760px; }

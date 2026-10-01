@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {setupZip,installerUrl} from '../app/lib/setup-package.js';
 import {POST} from '../app/api/admin/installer/route.js';
+import {POST as publicDownload} from '../app/api/public/installer/route.js';
 process.env.SUPABASE_URL='https://db.test';process.env.SUPABASE_SECRET_KEY='server-secret';process.env.DASHBOARD_USER='test';process.env.DASHBOARD_PASSWORD='secret';
 const auth='Basic '+Buffer.from('test:secret').toString('base64');
 const exe=Buffer.alloc(2048,0);exe.write('MZ');
@@ -36,5 +37,31 @@ test('checksum mismatch prevents issuing a setup code',async()=>{
  let calls=0;
  await mocked(async url=>{calls++;if(url===installerUrl)return new Response(exe);assert.ok(url.endsWith('installer-sha256.json'));return Response.json({version:'0.5.10',sha256:'0'.repeat(64)});},async()=>{
   const result=await POST(request());assert.equal(result.status,503);assert.match((await result.json()).error,/verification failed/);assert.equal(calls,2);
+ });
+});
+test('public self-service download validates origin and contact fields before any external request',async()=>{
+ await mocked(()=>assert.fail('fetch must not run'),async()=>{
+  const crossSite=new Request('https://dashboard.test/api/public/installer',{method:'POST',headers:{origin:'https://other.test','content-type':'application/json'},body:'{}'});
+  assert.equal((await publicDownload(crossSite)).status,403);
+  const invalid=new Request('https://dashboard.test/api/public/installer',{method:'POST',headers:{origin:'https://dashboard.test','content-type':'application/json','x-forwarded-for':'192.0.2.20'},body:JSON.stringify({name:'Mum',phone:'12',email:'bad'})});
+  assert.equal((await publicDownload(invalid)).status,400);
+ });
+});
+test('public page creates a private one-time package without putting phone or email in the installer',async()=>{
+ const calls=[];
+ await mocked(async(url,options)=>{
+  calls.push({url:String(url),options});
+  if(String(url).includes('setup_codes?'))return Response.json([]);
+  if(url===installerUrl)return new Response(exe);
+  if(String(url).endsWith('installer-sha256.json'))return Response.json({version:'0.5.10',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
+  assert.equal(url,'https://db.test/rest/v1/setup_codes');return new Response(null,{status:201});
+ },async()=>{
+  const body={name:'Meera Singh',phone:'+91 98765 43210',email:'Meera@Example.com',pc_name:''};
+  const request=new Request('https://dashboard.test/api/public/installer',{method:'POST',headers:{origin:'https://dashboard.test','content-type':'application/json','x-forwarded-for':'192.0.2.21'},body:JSON.stringify(body)});
+  const response=await publicDownload(request);assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/WindowsProtect-Meera-s-PC\.zip/);
+  const zip=Buffer.from(await response.arrayBuffer()),config=JSON.parse(files(zip)['WindowsProtect_Setup.json']);
+  assert.equal(config.owner,'Meera Singh');assert.equal(config.label,"Meera's PC");assert.match(config.code,/^[A-F0-9-]{14}$/);
+  assert.equal(zip.includes(Buffer.from('9876543210')),false);assert.equal(zip.includes(Buffer.from('meera@example.com')),false);
+  const insert=JSON.parse(calls.find(call=>call.options?.method==='POST').options.body);assert.match(insert.label,/^public:[a-f0-9]{24}:Meera's PC$/);assert.equal(calls.length,4);
  });
 });
