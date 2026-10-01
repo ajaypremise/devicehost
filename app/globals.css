@@ -306,3 +306,4 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .activationCell { min-width:180px; max-width:250px; }
 .activationCell small { display:block; color:var(--muted); margin-top:4px; }
 .deviceTable input[type=checkbox] { width:17px; height:17px; cursor:pointer; }
+.contactCell{display:flex;flex-direction:column;gap:3px;min-width:180px}.contactCell strong{font-size:12px}.contactCell small{color:#667085}

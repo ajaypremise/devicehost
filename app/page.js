@@ -62,15 +62,18 @@ export default async function Home({ searchParams }) {
   let error = "";
 
   try {
-    let assignments=[];
-    [devices, events, assignments] = await Promise.all([
+    let assignments=[],contacts=[];
+    [devices, events, assignments, contacts] = await Promise.all([
       supabaseGet("devices?select=*&order=created_at.desc"),
       supabaseGet("security_events?select=id,device_id,event_type,severity,title,details,created_at&order=created_at.desc&limit=12"),
       supabaseGet("security_events?event_type=eq.agent_assignment&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
+      supabaseGet("security_events?event_type=eq.device_contact&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
     ]);
     const assigned=new Map();
     for(const event of assignments) if(!assigned.has(event.device_id) && ["Koko","Ashu"].includes(event.details?.agent)) assigned.set(event.device_id,event.details.agent);
-    devices=devices.map(device=>({...device,assigned_agent:assigned.get(device.id) || null}));
+    const contactByDevice=new Map();
+    for(const event of contacts)if(!contactByDevice.has(event.device_id))contactByDevice.set(event.device_id,event.details||{});
+    devices=devices.map(device=>({...device,assigned_agent:assigned.get(device.id) || null,customer_email:contactByDevice.get(device.id)?.email||null,customer_phone:contactByDevice.get(device.id)?.phone||null}));
   } catch (err) {
     error = err instanceof Error ? err.message : "Unable to load dashboard.";
   }
@@ -82,7 +85,7 @@ export default async function Home({ searchParams }) {
 
   const needle = q.toLowerCase();
   let filtered = devices.filter((d) => {
-    const matchesSearch = !needle || [d.person_name, d.device_name, d.computer_name, d.device_code, d.os_version, d.assigned_agent]
+    const matchesSearch = !needle || [d.person_name, d.customer_email, d.customer_phone, d.device_name, d.computer_name, d.device_code, d.os_version, d.assigned_agent]
       .some((v) => String(v || "").toLowerCase().includes(needle));
     const onlineNow = isOnline(d.last_seen_at);
     const remoteOn = remoteSupportOn(d);
@@ -145,7 +148,7 @@ export default async function Home({ searchParams }) {
         </div>
 
         <form className="filterBar" method="get">
-          <input name="q" defaultValue={q} placeholder="Search owner, PC, Device ID or Windows version" />
+          <input name="q" defaultValue={q} placeholder="Search name, email, phone, PC or Device ID" />
           <select name="status" defaultValue={status}>
             <option value="all">All status</option>
             <option value="online">Online</option>
@@ -183,7 +186,7 @@ export default async function Home({ searchParams }) {
           </div>
         ) : (
           <>
-            <DeviceTable devices={pageDevices.map(d => ({id:d.id ?? null,person_name:d.person_name ?? null,device_name:d.device_name ?? null,device_code:d.device_code ?? null,computer_name:d.computer_name ?? null,assigned_agent:d.assigned_agent ?? null,last_seen_at:d.last_seen_at ?? null,security_posture:d.security_posture ?? null,remote_access_provider:d.remote_access_provider ?? null,meshcentral_connected:d.meshcentral_connected ?? null,rustdesk_service_running:d.rustdesk_service_running ?? null,protection_status:d.protection_status ?? null,migration_status:d.migration_status ?? null,agent_version:d.agent_version ?? null}))} />
+            <DeviceTable devices={pageDevices.map(d => ({id:d.id ?? null,person_name:d.person_name ?? null,customer_email:d.customer_email ?? null,customer_phone:d.customer_phone ?? null,device_name:d.device_name ?? null,device_code:d.device_code ?? null,computer_name:d.computer_name ?? null,assigned_agent:d.assigned_agent ?? null,last_seen_at:d.last_seen_at ?? null,security_posture:d.security_posture ?? null,remote_access_provider:d.remote_access_provider ?? null,meshcentral_connected:d.meshcentral_connected ?? null,rustdesk_service_running:d.rustdesk_service_running ?? null,protection_status:d.protection_status ?? null,migration_status:d.migration_status ?? null,agent_version:d.agent_version ?? null}))} />
 
             <div className="tableFooter">
               <span>Showing {filtered.length ? start + 1 : 0}-{Math.min(start + size, filtered.length)} of {filtered.length}</span>

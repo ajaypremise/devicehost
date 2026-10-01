@@ -1,5 +1,6 @@
 import { adminAuthorized } from "../../../../lib/device-actions.js";
 import { meshcentralConfigured, syncMeshCentralDevice } from "../../../../lib/meshcentral.js";
+import { normalizeEmail, normalizePhone } from "../../../../lib/device-contact.js";
 
 export const runtime = "nodejs";
 
@@ -23,10 +24,12 @@ export async function PATCH(request, { params }) {
 
     const personName = String(body.person_name || "").trim().slice(0, 120);
     const deviceName = String(body.device_name || "").trim().slice(0, 120);
+    const email=body.email==null?"":normalizeEmail(body.email),phone=body.phone==null?"":normalizePhone(body.phone);
 
     if (!personName || !deviceName) {
       return Response.json({ error: "Owner and device name are required" }, { status: 400 });
     }
+    if((String(body.email||"").trim()&&!email)||(String(body.phone||"").trim()&&!phone))return Response.json({error:"Enter a valid email and phone number."},{status:400});
 
     const currentResponse = await fetch(
       `${baseUrl()}/rest/v1/devices?id=eq.${encodeURIComponent(id)}&select=id,meshcentral_node_id&limit=1`,
@@ -63,6 +66,8 @@ export async function PATCH(request, { params }) {
         supportNameSynced = true;
       } catch {}
     }
+    const contactSaved=await fetch(`${baseUrl()}/rest/v1/security_events`,{method:"POST",headers:headers("return=minimal"),body:JSON.stringify({device_id:id,event_type:"device_contact",severity:"info",title:"Customer contact updated",details:{email:email||null,phone:phone||null}}),cache:"no-store"});
+    if(!contactSaved.ok)throw new Error("Contact update failed");
 
     return Response.json({
       ok: true,

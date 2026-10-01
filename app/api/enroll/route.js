@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { readEnrollmentGrant } from "../../lib/device-contact.js";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,9 @@ export async function POST(request) {
     const enrollmentKey = request.headers.get("x-enrollment-key");
     const expectedKey = process.env.DEVICE_ENROLLMENT_KEY;
 
-    if (!expectedKey || !enrollmentKey || enrollmentKey !== expectedKey) {
+    let contact=null;
+    if(expectedKey && enrollmentKey && enrollmentKey===expectedKey){contact=null;}else try{contact=readEnrollmentGrant(enrollmentKey);}catch{}
+    if (!expectedKey || !enrollmentKey || (enrollmentKey !== expectedKey && !contact)) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -74,6 +77,9 @@ export async function POST(request) {
           cache: "no-store"
         });
       } catch {}
+    }
+    if(contact){
+      await fetch(sbUrl("security_events"),{method:"POST",headers:sbHeaders("return=minimal"),body:JSON.stringify({device_id:device.id,event_type:"device_contact",severity:"info",title:"Customer contact saved",details:contact}),cache:"no-store"});
     }
     return Response.json({
       ok: true,

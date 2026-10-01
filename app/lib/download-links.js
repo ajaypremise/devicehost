@@ -15,6 +15,8 @@ export function createDownloadToken(details, hours = 24) {
     label: details.label,
     agent: details.agent,
     fingerprint: details.fingerprint,
+    email: details.email,
+    phone: details.phone,
     expires_at: expiresAt
   });
   const iv = crypto.randomBytes(12);
@@ -35,7 +37,7 @@ export function readDownloadToken(token) {
   decipher.setAAD(Buffer.from("WindowsProtect share link v1"));
   decipher.setAuthTag(bytes.subarray(12, 28));
   const payload = JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8"));
-  if (!payload || typeof payload.owner !== "string" || typeof payload.label !== "string" || !["Koko", "Ashu"].includes(payload.agent) || !/^[a-f0-9]{24}$/.test(payload.fingerprint || "") || !Number.isFinite(Date.parse(payload.expires_at))) throw new Error("Invalid download link");
+  if (!payload || typeof payload.owner !== "string" || typeof payload.label !== "string" || !["Koko", "Ashu"].includes(payload.agent) || !/^[a-f0-9]{24}$/.test(payload.fingerprint || "") || typeof payload.email!=="string" || typeof payload.phone!=="string" || !Number.isFinite(Date.parse(payload.expires_at))) throw new Error("Invalid download link");
   if (Date.parse(payload.expires_at) <= Date.now()) throw new Error("Expired download link");
   return payload;
 }

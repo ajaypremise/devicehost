@@ -62,13 +62,14 @@ export default function DeviceTable({devices}) {
     {results.length>0 && <div className="bulkResults" role="status">{results.map(result=><div key={result.id}><strong>{devices.find(d=>d.id===result.id)?.person_name || "Device"}</strong>: {result.error || ({deleted:"Record deleted",removal_pending:"Removal pending — record stays until this PC confirms uninstall",activation_requested:"Activation requested — waiting for PC confirmation",already_active:"Protection already active"}[result.status])}</div>)}</div>}
     <div className="deviceTableWrap"><table className="deviceTable"><thead><tr>
       <th><input type="checkbox" aria-label="Select all devices on this page" checked={all} disabled={busy} onChange={()=>setSelected(all?[]:devices.map(d=>d.id))}/></th>
-      <th>Owner / device</th><th>Agent</th><th>Computer</th><th>Status</th><th>Security</th><th>Remote</th><th>Protection</th><th>Last seen</th><th></th>
+      <th>Owner / device</th><th>Contact</th><th>Agent</th><th>Computer</th><th>Status</th><th>Security</th><th>Remote</th><th>Protection</th><th>Last seen</th><th></th>
     </tr></thead><tbody>{devices.map(device=>{
       const online=device.last_seen_at && (now || Date.now())-Date.parse(device.last_seen_at)<600000;
       const remote=device.remote_access_provider==="meshcentral"?device.meshcentral_connected:device.rustdesk_service_running;
       return <tr key={device.id}>
         <td><input type="checkbox" aria-label={`Select ${device.person_name || device.device_name || device.device_code}`} checked={visibleSelected.includes(device.id)} disabled={busy} onChange={()=>toggle(device.id)}/></td>
         <td><Link className="devicePrimary" href={`/device/${device.id}`}><strong>{device.person_name || "Unnamed"}</strong><span>{device.device_name || "Unnamed device"} · {device.device_code}</span></Link></td>
+        <td><span className="contactCell"><strong>{device.customer_email || "Not provided"}</strong><small>{device.customer_phone || "—"}</small></span></td>
         <td>{device.assigned_agent || "Unassigned"}</td>
         <td>{device.computer_name || "Pending"}</td><td><span className={online?"status online":"status offline"}>{online?"Online":"Offline"}</span></td>
         <td>{device.security_posture && device.security_posture!=="unknown"?device.security_posture:"Awaiting telemetry"}</td>

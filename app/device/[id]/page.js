@@ -51,10 +51,11 @@ function Row({ label, children }) {
 
 export default async function DevicePage({ params }) {
   const { id } = await params;
-  const [devices, events, inventory] = await Promise.all([
+  const [devices, events, inventory, contacts] = await Promise.all([
     supabaseGet(`devices?id=eq.${encodeURIComponent(id)}&select=*&limit=1`),
     supabaseGet(`security_events?device_id=eq.${encodeURIComponent(id)}&select=id,event_type,severity,title,details,created_at&order=created_at.desc&limit=20`),
     supabaseGet(`software_inventory?device_id=eq.${encodeURIComponent(id)}&select=id,app_name,app_version,publisher,is_remote_access,last_seen_at&order=is_remote_access.desc,app_name.asc&limit=250`),
+    supabaseGet(`security_events?device_id=eq.${encodeURIComponent(id)}&event_type=eq.device_contact&select=details,created_at&order=created_at.desc&limit=1`),
   ]);
 
   const device = devices[0];
@@ -64,6 +65,7 @@ export default async function DevicePage({ params }) {
   const tools = Array.isArray(device.remote_tools_detected) ? device.remote_tools_detected : [];
   const mesh = device.remote_access_provider === "meshcentral";
   const remoteOn = mesh ? device.meshcentral_connected === true : device.rustdesk_service_running === true;
+  const contact=contacts[0]?.details||{};
 
   return (
     <main className="shell wideShell">
@@ -76,7 +78,7 @@ export default async function DevicePage({ params }) {
         </div>
         <div className="detailActions">
           <span className={online ? "status online" : "status offline"}>{online ? "Online" : "Offline"}</span>
-          <DeviceNameEditor deviceId={device.id} personName={device.person_name || ""} deviceName={device.device_name || ""} />
+          <DeviceNameEditor deviceId={device.id} personName={device.person_name || ""} deviceName={device.device_name || ""} email={contact.email || ""} phone={contact.phone || ""} />
           <a className="primaryAction" href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer">Open MeshCentral</a>
         </div>
       </div>
@@ -114,6 +116,8 @@ export default async function DevicePage({ params }) {
 
         <DetailBlock title="Device identity">
           <Row label="Owner">{device.person_name}</Row>
+          <Row label="Email">{contact.email}</Row>
+          <Row label="Phone">{contact.phone}</Row>
           <Row label="Device label">{device.device_name}</Row>
           <Row label="Computer name">{device.computer_name}</Row>
           <Row label="Device ID">{device.device_code}</Row>

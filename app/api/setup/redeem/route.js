@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { contactFromSetupLabel, createEnrollmentGrant } from "../../../lib/device-contact.js";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ export async function POST(request) {
 
     const hash = crypto.createHash("sha256").update(code).digest("hex");
     const response = await fetch(
-      url(`setup_codes?code_hash=eq.${encodeURIComponent(hash)}&select=id,expires_at,used_at&limit=1`),
+      url(`setup_codes?code_hash=eq.${encodeURIComponent(hash)}&select=id,label,expires_at,used_at&limit=1`),
       { headers: headers(), cache: "no-store" }
     );
     if (!response.ok) throw new Error(await response.text());
@@ -47,9 +48,10 @@ export async function POST(request) {
     const updated = await mark.json();
     if (!updated.length) return Response.json({ error: "Setup code already used" }, { status: 409 });
 
+    const contact=contactFromSetupLabel(row.label);
     return Response.json({
       ok: true,
-      device_enrollment_key: enrollmentHeaders(),
+      device_enrollment_key: contact?createEnrollmentGrant(contact):enrollmentHeaders(),
       meshcentral_url: "https://34-69-184-103.sslip.io",
       mesh_agent_url: process.env.MESHCENTRAL_AGENT_URL || null
     });

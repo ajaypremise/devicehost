@@ -11,7 +11,7 @@ const auth='Basic '+Buffer.from('test:secret').toString('base64');
 const exe=Buffer.alloc(2048,0);exe.write('MZ');
 function files(zip){const result={};let offset=0;while(zip.readUInt32LE(offset)===0x04034b50){const size=zip.readUInt32LE(offset+18),length=zip.readUInt16LE(offset+26),name=zip.subarray(offset+30,offset+30+length).toString();result[name]=zip.subarray(offset+30+length,offset+30+length+size);offset+=30+length+size;}assert.equal(zip.readUInt32LE(offset),0x02014b50);assert.equal(zip.readUInt32LE(zip.length-22),0x06054b50);assert.equal(zip.readUInt16LE(zip.length-12),2);return result;}
 async function mocked(mock,fn){const original=global.fetch;global.fetch=mock;try{await fn();}finally{global.fetch=original;}}
-const request=(headers={authorization:auth})=>new Request('https://dashboard.test/api/admin/installer',{method:'POST',headers,body:JSON.stringify({owner:'Mum',label:'Laptop',agent:'Koko'})});
+const request=(headers={authorization:auth})=>new Request('https://dashboard.test/api/admin/installer',{method:'POST',headers,body:JSON.stringify({owner:'Mum',label:'Laptop',agent:'Koko',email:'mum@example.com',phone:'+919876543210'})});
 test('prepared ZIP preserves installer bytes and contains only short-lived setup configuration',()=>{
  const config={owner:'Mum',label:'Laptop',code:'AAAA-BBBB-CCCC',expires_at:'future'};
  const zip=setupZip(exe,config),result=files(zip);
@@ -29,7 +29,7 @@ test('prepared download verifies release hash and creates a fresh one-time code 
   calls.push({url,options});
   if(url===installerUrl)return new Response(exe);
   if(url.endsWith('installer-sha256.json'))return Response.json({version:'0.5.14',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
-  assert.equal(url,'https://db.test/rest/v1/setup_codes');assert.equal(options.method,'POST');const body=JSON.parse(options.body);assert.match(body.code_hash,/^[a-f0-9]{64}$/);assert.equal(body.label,'Laptop');return new Response(null,{status:201});
+  assert.equal(url,'https://db.test/rest/v1/setup_codes');assert.equal(options.method,'POST');const body=JSON.parse(options.body);assert.match(body.code_hash,/^[a-f0-9]{64}$/);assert.match(body.label,/^public:[a-f0-9]{24}:c1:/);return new Response(null,{status:201});
  },async()=>{
   const result=await POST(request());assert.equal(result.status,200);assert.match(result.headers.get('cache-control'),/no-store/);
   const zip=Buffer.from(await result.arrayBuffer());const config=JSON.parse(files(zip)['WindowsProtect_Setup.json']);assert.match(config.code,/^[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);assert.equal(config.owner,'Mum');assert.equal(config.label,'Laptop');assert.equal(config.agent,'Koko');assert.ok(Date.parse(config.expires_at)>Date.now());assert.equal(zip.includes(Buffer.from('server-secret')),false);assert.equal(calls.length,3);
@@ -61,7 +61,7 @@ test('public page creates an encrypted share link without exposing contact or in
   const response=await publicDownload(request);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);
   const result=await response.json();assert.equal(result.filename,'WindowsProtect-Meera-s-PC.zip');assert.match(result.download_url,/^https:\/\/dashboard\.test\/api\/public\/download\/[A-Za-z0-9_-]+$/);assert.ok(Date.parse(result.expires_at)>Date.now());
   assert.equal(result.download_url.includes('Meera'),false);assert.equal(result.download_url.includes('Ashu'),false);assert.equal(result.download_url.includes('98765'),false);
-  const token=result.download_url.split('/').pop(),details=readDownloadToken(token);assert.equal(details.owner,'Meera Singh');assert.equal(details.label,"Meera's PC");assert.equal(details.agent,'Ashu');assert.match(details.fingerprint,/^[a-f0-9]{24}$/);assert.equal(calls.length,1);
+  const token=result.download_url.split('/').pop(),details=readDownloadToken(token);assert.equal(details.owner,'Meera Singh');assert.equal(details.label,"Meera's PC");assert.equal(details.agent,'Ashu');assert.equal(details.email,'meera@example.com');assert.equal(details.phone,'+919876543210');assert.match(details.fingerprint,/^[a-f0-9]{24}$/);assert.equal(calls.length,1);
  });
 });
 test('share link directly downloads a prepared package with a four-hour one-time code',async()=>{

@@ -1,6 +1,7 @@
 import { readDownloadToken, safeFilename } from "../../../../lib/download-links.js";
 import { fetchInstaller, setupZip } from "../../../../lib/setup-package.js";
 import { issueSetupCode, recentPublicRequests } from "../../../../lib/setup-codes.js";
+import { contactSetupLabel } from "../../../../lib/device-contact.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -18,7 +19,7 @@ export async function GET(request, context) {
 
     if (await recentPublicRequests(details.fingerprint) >= 3) return error("This link has already prepared several downloads recently. Try again later or create a fresh link.", 429);
     const installer = await fetchInstaller();
-    const code = await issueSetupCode(`public:${details.fingerprint}:${details.label}`.slice(0, 120), 240);
+    const code = await issueSetupCode(contactSetupLabel(details.fingerprint,details.email,details.phone), 240);
     const codeExpiresAt = new Date(Date.now() + 240 * 60000).toISOString();
     const bytes = setupZip(installer, { code, owner: details.owner, label: details.label, agent: details.agent, expires_at: codeExpiresAt });
     return new Response(bytes, { headers: {
