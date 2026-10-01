@@ -9,6 +9,7 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
   const [message,setMessage]=useState("");
   const [size,setSize]=useState("standard");
   const [placement,setPlacement]=useState("center");
+  const [kind,setKind]=useState("warning");
   const [busy,setBusy]=useState(false);
   const [result,setResult]=useState("");
 
@@ -41,7 +42,7 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
         <button disabled={!ready} onClick={()=>setMode(mode==="url"?null:"url")}>Open website</button>
       </div>
 
-      {!ready ? <p className="remoteActionHint">Waiting for this PC's MeshCentral Node ID.</p> : null}
+      {!ready ? <p className="remoteActionHint">This PC must be connected to approved support.</p> : null}
 
       {mode==="message" ? (
         <div className="remoteActionForm">
@@ -55,6 +56,13 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
                 <option value="large">Large</option>
               </select>
             </label>
+            <label>Style
+              <select value={kind} onChange={(e)=>setKind(e.target.value)}>
+                <option value="warning">Warning</option>
+                <option value="information">Information</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
             <label>Placement
               <select value={placement} onChange={(e)=>setPlacement(e.target.value)}>
                 <option value="center">Center</option>
@@ -65,7 +73,7 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
           </div>
           <div className="remoteActionRow">
             <span className="remoteActionHint">Shown in the active Windows session.</span>
-            <button disabled={busy || !message.trim()} onClick={()=>send({action:"message",title,message,size,placement})}>{busy?"Sending...":"Send to PC"}</button>
+            <button disabled={busy || !message.trim()} onClick={()=>send({action:"message",title,message,size,placement,kind})}>{busy?"Sending...":"Send to PC"}</button>
           </div>
         </div>
       ) : null}

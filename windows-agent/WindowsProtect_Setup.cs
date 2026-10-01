@@ -13,12 +13,14 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Management;
+using System.Web.Script.Serialization;
 
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.9.0")]
-[assembly: AssemblyFileVersion("0.5.9.0")]
+[assembly: AssemblyVersion("0.5.10.0")]
+[assembly: AssemblyFileVersion("0.5.10.0")]
 
 public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
@@ -167,7 +169,7 @@ public class WindowsProtectSetup : Form {
     AddRow(footer,progress,0,4);
     status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(100,108,120));
     AddRow(footer,status,0,0);
-    AddRow(footer,TextLabel("TEST BUILD  /  0.5.9",8,Color.FromArgb(120,127,138)),4,0);
+
 
     try{
       var tokenPath=Path.Combine(DataDir,"device.token");
@@ -178,11 +180,28 @@ public class WindowsProtectSetup : Form {
         status.Text="This PC is registered. No new setup code needed.";
       }
     }catch{}
+    if(codeBox.Enabled)LoadSetupPackage(enrollment);
     FormClosing+=(sender,e)=>{ if(installing) e.Cancel=true; };
     Shown+=(sender,e)=>{
       var area=Screen.FromControl(this).WorkingArea;
       if(Height>area.Height-32){ Height=Math.Max(300,area.Height-32); Top=area.Top+16; }
     };
+  }
+
+  void LoadSetupPackage(Control enrollment){
+    var path=Path.Combine(Path.GetDirectoryName(Application.ExecutablePath),"WindowsProtect_Setup.json");
+    if(!File.Exists(path))return;
+    try{
+      if(new FileInfo(path).Length>4096)throw new IOException();
+      var package=new JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,string>>(File.ReadAllText(path,Encoding.UTF8));
+      DateTime expiry;
+      if(!package.ContainsKey("code") || !Regex.IsMatch(package["code"]??"","\\A[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}\\z") || !package.ContainsKey("expires_at") || !DateTime.TryParse(package["expires_at"],System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.RoundtripKind,out expiry))throw new IOException();
+      if(expiry.ToUniversalTime()<=DateTime.UtcNow){status.Text="This setup download has expired. Get a new download from your dashboard.";return;}
+      codeBox.Text=package["code"].ToUpperInvariant();
+      if(package.ContainsKey("owner"))ownerBox.Text=(package["owner"]??"").Trim().Substring(0,Math.Min(120,(package["owner"]??"").Trim().Length));
+      if(package.ContainsKey("label"))labelBox.Text=(package["label"]??"").Trim().Substring(0,Math.Min(120,(package["label"]??"").Trim().Length));
+      enrollment.Visible=false;status.Text="Ready to install WindowsProtect.";
+    }catch{status.Text="Setup authorization could not be read. Download a fresh installer package.";}
   }
 
   static Label TextLabel(string text,float size,Color color,FontStyle style=FontStyle.Regular){
@@ -285,20 +304,20 @@ public class WindowsProtectSetup : Form {
     bool completed=false;
     try{
       ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
-      SetStatus("Preparing authorized installation maintenance...");
+      SetStatus("Preparing installation...");
       TamperProtection.BeginMaintenance();
       if(!supportOnlyRetry){
         SetStatus("Saving Windows credential locally...");
         SaveCredential(userBox.Text.Trim(),passBox.Text); passBox.Text="";
         string meshAgentUrl="";
         if(!alreadyEnrolled){
-          SetStatus("Validating setup code...");
+          SetStatus("Verifying setup...");
           var redeem=await PostJson(BaseUrl+"/api/setup/redeem","{\"code\":\""+Esc(code)+"\"}",null);
           var enrollKey=JsonValue(redeem,"device_enrollment_key");
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.9-test\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.10\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -340,21 +359,21 @@ public class WindowsProtectSetup : Form {
         supportOnlyRetry=true;
       }
       await CompleteProtectionActivation();
-      SetStatus("Securing protection against ordinary removal...");
+      SetStatus("Securing WindowsProtect...");
       TamperProtection.Enable();
       string hardeningNonce;
       using(var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(TamperProtection.ProductKey))hardeningNonce=Convert.ToString(key.GetValue("HardeningNonce"));
       using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
       var hardeningClock=Stopwatch.StartNew();bool hardened=false;
       while(hardeningClock.ElapsedMilliseconds<120000){
-        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.9-test|"+hardeningNonce){hardened=true;break;}}catch{}
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.10|"+hardeningNonce){hardened=true;break;}}catch{}
         await Task.Delay(500);
       }
       if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");
       completed=true; installing=false; progress.Visible=false;
       bool active=ProtectionActivation.IsActive();
-      SetStatus(active?"Installation complete - Protected.":"Installed - waiting for dashboard activation.");
-      var message=active?"WindowsProtect is installed and protection is active.":"WindowsProtect is installed and secure support is verified. Remote-tool blocking is waiting for dashboard activation. Activate it from your dashboard when finished. It will activate automatically by "+ProtectionActivation.Deadline().ToLocalTime().ToString("g")+" (maximum four hours from setup).";
+      SetStatus(active?"Installation complete. Protection is active.":"Installation complete. Setup period is active.");
+      var message=active?"WindowsProtect is installed and protection is active.":"WindowsProtect is installed. Your setup period ends at "+ProtectionActivation.Deadline().ToLocalTime().ToString("g")+". Remote-access restrictions will start automatically by then.";
       MessageBox.Show(this,message,"Setup complete",MessageBoxButtons.OK,MessageBoxIcon.Information);
       Close();
     }catch(Exception ex){
@@ -449,7 +468,7 @@ public class WindowsProtectSetup : Form {
       ProtectionActivation.MarkSupportVerified(nonce);
       ProtectionActivation.Evaluate();
       if(!ProtectionActivation.IsActive()){
-        SetStatus("Secure support verified - waiting for dashboard activation.");
+        SetStatus("Finishing setup...");
         using(var pendingService=new ServiceController("DeviceSupportHost")) pendingService.ExecuteCommand(128);
         return;
       }
@@ -489,6 +508,15 @@ public class WindowsProtectSetup : Form {
   }
 
   static void InstallUserUI(){
+    // Retire only the old helper for this exact -File path so an update cannot
+    // leave two watchers racing to display old/new message designs.
+    using(var query=new ManagementObjectSearcher("SELECT ProcessId,CommandLine FROM Win32_Process WHERE Name='powershell.exe'")){
+      foreach(ManagementObject process in query.Get()){
+        var command=Convert.ToString(process["CommandLine"]??"");
+        if(!Regex.IsMatch(command,@"-File\s+""?"+Regex.Escape(UserUIScript)+@"(?:""|\s|$)",RegexOptions.IgnoreCase))continue;
+        try{using(var old=Process.GetProcessById(Convert.ToInt32(process["ProcessId"]))){old.Kill();old.WaitForExit(5000);}}catch(ArgumentException){}
+      }
+    }
     var script=@"
 $ErrorActionPreference='SilentlyContinue'
 $cmdFile='C:\ProgramData\WindowsProtect\UI\ui-command.txt'
@@ -509,37 +537,21 @@ while($true){
       try{
         $t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
         $m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[2]))
-        $size=$p[3]; $place=$p[4]
-        $w=520; $h=240
-        if($size -eq 'compact'){$w=420;$h=180}
-        elseif($size -eq 'large'){$w=640;$h=320}
-        $f=New-Object System.Windows.Forms.Form
-        $f.Text=$t; $f.ClientSize=New-Object System.Drawing.Size($w,$h)
-        $f.FormBorderStyle='FixedDialog'; $f.MaximizeBox=$false; $f.MinimizeBox=$false
-        $f.TopMost=$true; $f.ShowInTaskbar=$true; $f.StartPosition='Manual'; $f.BackColor=[Drawing.Color]::White
-        $wa=[Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-        if($place -eq 'top_right'){$x=$wa.Right-$w-24;$y=$wa.Top+24}
-        elseif($place -eq 'bottom_right'){$x=$wa.Right-$w-24;$y=$wa.Bottom-$h-24}
-        else{$x=$wa.Left+[int](($wa.Width-$w)/2);$y=$wa.Top+[int](($wa.Height-$h)/2)}
-        $f.Location=New-Object System.Drawing.Point($x,$y)
-        $hdr=New-Object Windows.Forms.Panel; $hdr.Dock='Top'; $hdr.Height=56; $hdr.BackColor=[Drawing.Color]::FromArgb(17,24,39)
-        $ttl=New-Object Windows.Forms.Label; $ttl.Text=$t; $ttl.Dock='Fill'; $ttl.ForeColor=[Drawing.Color]::White
-        $ttl.Font=New-Object Drawing.Font('Segoe UI',14,[Drawing.FontStyle]::Bold); $ttl.Padding=New-Object Windows.Forms.Padding(18,0,18,0); $ttl.TextAlign='MiddleLeft'
-        $hdr.Controls.Add($ttl)
-        $body=New-Object Windows.Forms.Label; $body.Text=$m; $body.Location=New-Object Drawing.Point(20,78)
-        $body.Size=New-Object Drawing.Size(($w-40),($h-142)); $body.ForeColor=[Drawing.Color]::FromArgb(31,41,55)
-        $body.Font=New-Object Drawing.Font('Segoe UI',10.5); $body.TextAlign='TopLeft'
-        $ok=New-Object Windows.Forms.Button; $ok.Text='OK'; $ok.Size=New-Object Drawing.Size(92,34)
-        $ok.Location=New-Object Drawing.Point(($w-112),($h-52)); $ok.BackColor=[Drawing.Color]::FromArgb(37,99,235)
-        $ok.ForeColor=[Drawing.Color]::White; $ok.FlatStyle='Flat'; $ok.Add_Click({$f.Close()})
-        $f.Controls.Add($hdr); $f.Controls.Add($body); $f.Controls.Add($ok); $f.AcceptButton=$ok
-        [void]$f.ShowDialog()
+        $size=$p[3]; $place=$p[4]; $kind='warning'
+        if($p.Length -ge 7 -and $p[5] -in @('information','warning','error')){$kind=$p[5]}
+        . 'C:\Program Files\Common Files\DeviceSupport\WindowsProtect_MessageDialog.ps1'
+        $f=New-WindowsProtectDialog -Title $t -Message $m -Size $size -Placement $place -Kind $kind
+        [void]$f.ShowDialog(); $f.Dispose()
       }catch{}
     }
   }
   Start-Sleep -Milliseconds 750
 }
 ";
+    using(var input=Assembly.GetExecutingAssembly().GetManifestResourceStream("WindowsProtect_MessageDialog.ps1")){
+      if(input==null)throw new IOException("WindowsProtect message component is missing.");
+      using(var output=File.Create(Path.Combine(InstallDir,"WindowsProtect_MessageDialog.ps1")))input.CopyTo(output);
+    }
     File.WriteAllText(UserUIScript,script,Encoding.UTF8);
     try{
       using(var run=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")){

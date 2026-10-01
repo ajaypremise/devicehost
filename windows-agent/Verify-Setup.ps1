@@ -18,10 +18,33 @@ try {
   Check ($form.ClientRectangle.Contains($buttonBounds)) 'Primary action is clipped or outside the window.'
   Check (@($controls | Where-Object { $_ -is [Windows.Forms.CheckBox] }).Count -eq 0) 'Installer still contains a checkbox.'
   Check (-not [bool]($controls | Where-Object { $_.Text -match 'MeshCentral|MeshControl' })) 'Internal provider name visible.'
+  Check (-not [bool]($controls | Where-Object { $_.Text -match 'TEST BUILD|admin approval|dashboard activation' })) 'Internal build/approval wording visible.'
   Check ((Field 'ownerBox').Text -eq '') 'Owner placeholder submitted as text.'
   Check ((Field 'labelBox').Text -eq '') 'Device placeholder submitted as text.'
   Check ((Field 'codeBox').Text -eq '') 'Setup code placeholder submitted as text.'
   Check ((Field 'passBox').UseSystemPasswordChar) 'Password is not masked.'
+  # A dashboard-prepared sidecar fills setup authorization automatically without
+  # modifying installer bytes or weakening Windows password verification.
+  $packageFile=Join-Path $PWD 'WindowsProtect_Setup.json'
+  Check (-not(Test-Path $packageFile)) 'Unexpected setup sidecar on CI runner.'
+  $enrollment=(Field 'codeBox').Parent
+  try {
+    @{code='A1B2-C3D4-E5F6';owner='Mum';label='Living room';expires_at=[DateTime]::UtcNow.AddMinutes(30).ToString('o')} | ConvertTo-Json -Compress | Set-Content $packageFile -Encoding UTF8
+    $form.GetType().GetMethod('LoadSetupPackage',$flags).Invoke($form,@($enrollment))
+    Check ((Field 'codeBox').Text -eq 'A1B2-C3D4-E5F6') 'Prepared setup code was not loaded automatically.'
+    Check ((Field 'ownerBox').Text -eq 'Mum') 'Prepared owner was not loaded.'
+    Check ((Field 'labelBox').Text -eq 'Living room') 'Prepared device label was not loaded.'
+    Check (-not $enrollment.Visible) 'Prepared installer still asks the user for a manual setup code.'
+    (Field 'codeBox').Text=''
+    @{code='A1B2-C3D4-E5F6';owner='Mum';label='Living room';expires_at=[DateTime]::UtcNow.AddMinutes(-1).ToString('o')} | ConvertTo-Json -Compress | Set-Content $packageFile -Encoding UTF8
+    $form.GetType().GetMethod('LoadSetupPackage',$flags).Invoke($form,@($enrollment))
+    Check ((Field 'codeBox').Text -eq '') 'Expired package code was accepted.'
+    Check ((Field 'status').Text -like '*expired*') 'Expired package does not explain how to recover.'
+    Write-Output 'Prepared installer: one-time code and identity loaded automatically; manual code section hidden; expired package rejected.'
+  } finally {
+    Remove-Item $packageFile -Force
+    (Field 'codeBox').Text='';(Field 'ownerBox').Text='';(Field 'labelBox').Text='';$enrollment.Visible=$true
+  }
   # Supply dummy identity fields and leave password blank. This must return before
   # any credential write, network enrollment, or service operation.
   (Field 'ownerBox').Text = 'Test owner'

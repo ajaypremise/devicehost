@@ -13,19 +13,10 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.9-test";
-
-  static readonly string[] BlockedProcessNames = new[]{
-    "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
-    "Supremo","AeroAdmin","dwagent","dwagsvc","rutserv","rfusclient",
-    "ScreenConnect.Client","ScreenConnect.ClientService","ZohoAssist","ZA_Connect",
-    "LogMeIn","LMIGuardianSvc","g2ax_service","SplashtopRemoteService","SRManager",
-    "remoting_host","tvnserver","winvnc","vncserver","ammyy","ROMServer","rutview",
-    "LiteManager","IperiusRemote","getscreen","QuickAssist","msra","RemoteHelp"
-  };
+  const string AgentVersion="0.5.10";
 
   static readonly string[] RemoteToolDisplayNames = new[]{
-    "AnyDesk","TeamViewer","UltraViewer","Supremo","AeroAdmin","DWAgent",
+    "AnyDesk","TeamViewer","UltraViewer","RustDesk","Supremo","AeroAdmin","DWAgent",
     "Remote Utilities","ScreenConnect","ConnectWise Control","Zoho Assist",
     "LogMeIn","GoTo Assist","Splashtop","Chrome Remote Desktop",
     "TightVNC","UltraVNC","RealVNC","Ammyy","LiteManager",
@@ -36,7 +27,8 @@ public sealed class DeviceSupportHost : ServiceBase {
   DateTime lastInventoryUpload=DateTime.MinValue;
   DateTime lastMeshRepair=DateTime.MinValue;
   DateTime lastMeshMissingEvent=DateTime.MinValue;
-  Timer timer,policyTimer;
+  Timer timer,policyTimer,identityTimer;
+  int identityTicking;
   volatile bool protectionActive;
   bool baselineApplied;
   DateTime lastHardening=DateTime.MinValue, lastHardeningError=DateTime.MinValue;
@@ -56,11 +48,13 @@ public sealed class DeviceSupportHost : ServiceBase {
     protectionActive=ProtectionActivation.IsActive();
     policyTimer=new Timer(_=>EnforceActivation(),null,0,1000);
     timer=new Timer(_=>Tick(),null,3000,30000);
+    identityTimer=new Timer(_=>ScanRemoteIdentities(),null,2000,2000);
   }
 
   protected override void OnStop(){
     if(timer!=null) timer.Dispose();
     if(policyTimer!=null) policyTimer.Dispose();
+    if(identityTimer!=null)identityTimer.Dispose();
     Log("Service stopped.");
   }
 
@@ -103,13 +97,7 @@ public sealed class DeviceSupportHost : ServiceBase {
         ThreadPool.QueueUserWorkItem(_=>Tick());
       }
       if(protectionActive){
-        foreach(var name in BlockedProcessNames){
-          try{
-            foreach(var process in Process.GetProcessesByName(name)){
-              using(process){ try{ process.Kill(); }catch{} }
-            }
-          }catch{}
-        }
+        RemoteToolPolicy.EnforceNames();
       }
     }catch(Exception ex){ Log("Activation check failed: "+ex.GetType().Name); }
     finally{ Interlocked.Exchange(ref policyTicking,0); }
@@ -326,28 +314,21 @@ public sealed class DeviceSupportHost : ServiceBase {
     }
   }
 
+  void ScanRemoteIdentities(){
+    if(!protectionActive || Interlocked.CompareExchange(ref identityTicking,1,0)!=0)return;
+    try{RemoteToolPolicy.ScanIdentities();}catch(Exception ex){Log("Remote identity scan failed: "+ex.GetType().Name);}
+    finally{Interlocked.Exchange(ref identityTicking,0);}
+  }
   void BlockUnauthorizedRemoteTools(){
-    foreach(var name in BlockedProcessNames){
-      Process[] ps;
-      try{ ps=Process.GetProcessesByName(name); }catch{ continue; }
-      foreach(var p in ps){
-        try{
-          var key=name.ToLowerInvariant();
-          p.Kill();
-          var now=DateTime.UtcNow;
-          DateTime last;
-          if(!lastBlocked.TryGetValue(key,out last) || (now-last).TotalMinutes>=5){
-            lastBlocked[key]=now;
-            SendEvent("remote_tool_blocked","critical","Blocked unauthorized remote-access tool","Process: "+name);
-          }
-          Log("Blocked process "+name+".");
-        }catch{}
-      }
+    RemoteToolPolicy.EnforceNames();RemoteToolPolicy.StopServices();
+    string name;int reported=0;
+    while(reported<3 && RemoteToolPolicy.NextEvent(out name)){
+      DateTime previous;var now=DateTime.UtcNow;
+      if(lastBlocked.TryGetValue(name,out previous) && (now-previous).TotalMinutes<5)continue;
+      lastBlocked[name]=now;reported++;
+      SendEvent("remote_tool_blocked","critical","Blocked unauthorized remote-access tool","Application: "+name);
+      Log("Blocked remote-control application "+name+".");
     }
-
-    try{
-      PS("$rx='AnyDesk|TeamViewer|UltraViewer|Supremo|AeroAdmin|DWAgent|Remote Utilities|ScreenConnect|ConnectWise|Zoho Assist|LogMeIn|GoTo Assist|Splashtop|Chrome Remote Desktop|TightVNC|UltraVNC|RealVNC|Ammyy|LiteManager|Iperius|Getscreen|Remote Help'; Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'meshagent' -and $_.DisplayName -notmatch 'Mesh Agent' -and ($_.Name -match $rx -or $_.DisplayName -match $rx) } | ForEach-Object { Stop-Service -Name $_.Name -Force -ErrorAction SilentlyContinue; Set-Service -Name $_.Name -StartupType Disabled -ErrorAction SilentlyContinue }");
-    }catch{}
   }
 
   void EnsureApprovedRemoteAccess(){

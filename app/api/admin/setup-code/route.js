@@ -1,3 +1,4 @@
+import { adminAuthorized } from "../../../lib/device-actions.js";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
@@ -19,6 +20,7 @@ function randomCode() {
 }
 
 export async function POST(request) {
+  if(!adminAuthorized(request))return Response.json({error:"Unauthorized"},{status:401});
   try {
     const body = await request.json().catch(() => ({}));
     const label = String(body.label || "").trim().slice(0, 120) || null;

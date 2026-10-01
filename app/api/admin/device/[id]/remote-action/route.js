@@ -1,4 +1,5 @@
-import { meshcentralConfigured, sendMeshCentral } from "../../../../../lib/meshcentral";
+import { adminAuthorized } from "../../../../../lib/device-actions.js";
+import { meshcentralConfigured, sendMeshCentral } from "../../../../../lib/meshcentral.js";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,7 @@ async function getDevice(id) {
 }
 
 export async function POST(request, { params }) {
+  if(!adminAuthorized(request))return Response.json({error:"Unauthorized"},{status:401});
   try {
     const { id } = await params;
     const device = await getDevice(id);
@@ -71,12 +73,14 @@ export async function POST(request, { params }) {
 
       const size = ["compact","standard","large"].includes(body.size) ? body.size : "standard";
       const placement = ["center","top_right","bottom_right"].includes(body.placement) ? body.placement : "center";
+      const kind=["information","warning","error"].includes(body.kind)?body.kind:"warning";
       const payload = [
         "message",
         Buffer.from(title,"utf8").toString("base64"),
         Buffer.from(message,"utf8").toString("base64"),
         size,
         placement,
+        kind,
         "x"
       ].join("|");
       const payload64 = Buffer.from(payload, "utf8").toString("base64");

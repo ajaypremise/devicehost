@@ -216,7 +216,7 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .setupPanel { display:grid; grid-template-columns:minmax(260px,1.2fr) minmax(320px,1fr); gap:14px; align-items:center; border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:16px 18px; }
 .setupPanel > div > strong { font-size:13px; }
 .setupPanel > div > p { margin:5px 0 0; color:var(--muted); font-size:11px; line-height:1.5; }
-.setupPanel form { display:flex; gap:8px; }
+.setupPanel form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; }
 .setupPanel input { flex:1; min-width:0; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:10px 11px; }
 .setupPanel button { border:1px solid var(--line); background:#f4f7fb; color:#0b0e13; border-radius:8px; padding:9px 12px; font-weight:750; cursor:pointer; white-space:nowrap; }
 .setupPanel button:disabled { opacity:.6; cursor:default; }
@@ -225,7 +225,7 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .inlineError { grid-column:1 / -1; color:#ffb5ba; font-size:11px; }
 @media (max-width: 760px) {
   .setupPanel { grid-template-columns:1fr; }
-  .setupPanel form { flex-direction:column; }
+  .setupPanel form { grid-template-columns:1fr; }
 }
 
 
@@ -257,7 +257,7 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .remoteActionResult { margin-top:10px; color:#c7f6e3; font-size:11px; }
 @media (max-width: 560px) { .remoteActionRow { grid-template-columns:1fr; } }
 
-.remoteActionOptions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.remoteActionOptions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
 .remoteActionOptions label { display:grid; gap:6px; color:var(--muted); font-size:11px; }
 .remoteActionOptions select { width:100%; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:9px 10px; font-size:12px; }
 @media (max-width:560px) { .remoteActionOptions { grid-template-columns:1fr; } }
