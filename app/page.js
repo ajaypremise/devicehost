@@ -53,6 +53,7 @@ export default async function Home({ searchParams }) {
   const status = ["online","offline"].includes(String(params.status)) ? String(params.status) : "all";
   const posture = ["healthy","attention"].includes(String(params.posture)) ? String(params.posture) : "all";
   const remote = ["on","off"].includes(String(params.remote)) ? String(params.remote) : "all";
+  const sales = ["sale","no_sale"].includes(String(params.sales)) ? String(params.sales) : "all";
   const sort = ["owner","computer","last_seen","attention"].includes(String(params.sort)) ? String(params.sort) : "attention";
   const size = [20,50,100].includes(Number(params.size)) ? Number(params.size) : 20;
   const requestedPage = Number.parseInt(String(params.page || "1"), 10) || 1;
@@ -62,18 +63,21 @@ export default async function Home({ searchParams }) {
   let error = "";
 
   try {
-    let assignments=[],contacts=[];
-    [devices, events, assignments, contacts] = await Promise.all([
+    let assignments=[],contacts=[],salesEvents=[];
+    [devices, events, assignments, contacts, salesEvents] = await Promise.all([
       supabaseGet("devices?select=*&order=created_at.desc"),
       supabaseGet("security_events?select=id,device_id,event_type,severity,title,details,created_at&order=created_at.desc&limit=12"),
       supabaseGet("security_events?event_type=eq.agent_assignment&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
       supabaseGet("security_events?event_type=eq.device_contact&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
+      supabaseGet("security_events?event_type=eq.sales_status&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
     ]);
     const assigned=new Map();
     for(const event of assignments) if(!assigned.has(event.device_id) && ["Koko","Ashu"].includes(event.details?.agent)) assigned.set(event.device_id,event.details.agent);
     const contactByDevice=new Map();
     for(const event of contacts)if(!contactByDevice.has(event.device_id))contactByDevice.set(event.device_id,event.details||{});
-    devices=devices.map(device=>({...device,assigned_agent:assigned.get(device.id) || null,customer_email:contactByDevice.get(device.id)?.email||null,customer_phone:contactByDevice.get(device.id)?.phone||null}));
+    const salesByDevice=new Map();
+    for(const event of salesEvents)if(!salesByDevice.has(event.device_id) && ["sale","no_sale"].includes(event.details?.status))salesByDevice.set(event.device_id,event.details.status);
+    devices=devices.map(device=>({...device,assigned_agent:assigned.get(device.id) || null,customer_email:contactByDevice.get(device.id)?.email||null,customer_phone:contactByDevice.get(device.id)?.phone||null,sales_status:salesByDevice.get(device.id)||"no_sale"}));
   } catch (err) {
     error = err instanceof Error ? err.message : "Unable to load dashboard.";
   }
@@ -93,7 +97,8 @@ export default async function Home({ searchParams }) {
     const matchesPosture = posture === "all" ||
       (posture === "healthy" ? d.security_posture === "healthy" : attentionRank(d) >= 2);
     const matchesRemote = remote === "all" || (remote === "on" ? remoteOn : !remoteOn);
-    return matchesSearch && matchesStatus && matchesPosture && matchesRemote;
+    const matchesSales = sales === "all" || d.sales_status === sales;
+    return matchesSearch && matchesStatus && matchesPosture && matchesRemote && matchesSales;
   });
 
   filtered = [...filtered].sort((a,b) => {
@@ -109,10 +114,10 @@ export default async function Home({ searchParams }) {
   const pageDevices = filtered.slice(start, start + size);
 
   function hrefWith(overrides = {}) {
-    const values = { q, status, posture, remote, sort, size, page: currentPage, ...overrides };
+    const values = { q, status, posture, remote, sales, sort, size, page: currentPage, ...overrides };
     const query = new URLSearchParams();
     if (values.q) query.set("q", values.q);
-    for (const key of ["status","posture","remote","sort"]) if (values[key] && values[key] !== "all") query.set(key, String(values[key]));
+    for (const key of ["status","posture","remote","sales","sort"]) if (values[key] && values[key] !== "all") query.set(key, String(values[key]));
     if (values.size !== 20) query.set("size", String(values.size));
     if (values.page !== 1) query.set("page", String(values.page));
     const qs = query.toString();
@@ -164,6 +169,11 @@ export default async function Home({ searchParams }) {
             <option value="on">Remote On</option>
             <option value="off">Remote Off</option>
           </select>
+          <select name="sales" defaultValue={sales}>
+            <option value="all">All sales</option>
+            <option value="sale">Sale</option>
+            <option value="no_sale">No Sale</option>
+          </select>
           <select name="sort" defaultValue={sort}>
             <option value="attention">Sort: attention first</option>
             <option value="last_seen">Sort: last seen</option>
@@ -176,7 +186,7 @@ export default async function Home({ searchParams }) {
             <option value="100">100 / page</option>
           </select>
           <button type="submit">Apply</button>
-          {(q || status !== "all" || posture !== "all" || remote !== "all" || sort !== "attention" || size !== 20) ? <Link href="/" className="clearSearch">Reset</Link> : null}
+          {(q || status !== "all" || posture !== "all" || remote !== "all" || sales !== "all" || sort !== "attention" || size !== 20) ? <Link href="/" className="clearSearch">Reset</Link> : null}
         </form>
 
         {filtered.length === 0 && !error ? (
@@ -186,7 +196,7 @@ export default async function Home({ searchParams }) {
           </div>
         ) : (
           <>
-            <DeviceTable devices={pageDevices.map(d => ({id:d.id ?? null,person_name:d.person_name ?? null,customer_email:d.customer_email ?? null,customer_phone:d.customer_phone ?? null,device_name:d.device_name ?? null,device_code:d.device_code ?? null,computer_name:d.computer_name ?? null,assigned_agent:d.assigned_agent ?? null,last_seen_at:d.last_seen_at ?? null,security_posture:d.security_posture ?? null,remote_access_provider:d.remote_access_provider ?? null,meshcentral_connected:d.meshcentral_connected ?? null,rustdesk_service_running:d.rustdesk_service_running ?? null,protection_status:d.protection_status ?? null,migration_status:d.migration_status ?? null,agent_version:d.agent_version ?? null}))} />
+            <DeviceTable devices={pageDevices.map(d => ({id:d.id ?? null,person_name:d.person_name ?? null,customer_email:d.customer_email ?? null,customer_phone:d.customer_phone ?? null,device_name:d.device_name ?? null,device_code:d.device_code ?? null,computer_name:d.computer_name ?? null,assigned_agent:d.assigned_agent ?? null,sales_status:d.sales_status ?? "no_sale",last_seen_at:d.last_seen_at ?? null,security_posture:d.security_posture ?? null,remote_access_provider:d.remote_access_provider ?? null,meshcentral_connected:d.meshcentral_connected ?? null,rustdesk_service_running:d.rustdesk_service_running ?? null,protection_status:d.protection_status ?? null,migration_status:d.migration_status ?? null,agent_version:d.agent_version ?? null}))} />
 
             <div className="tableFooter">
               <span>Showing {filtered.length ? start + 1 : 0}-{Math.min(start + size, filtered.length)} of {filtered.length}</span>

@@ -179,10 +179,14 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 
 
 /* Dashboard filters */
-.filterBar { display:grid; grid-template-columns:minmax(260px,2fr) repeat(5,minmax(120px,1fr)) auto auto; gap:8px; align-items:center; margin:0 0 12px; }
+.filterBar { display:grid; grid-template-columns:minmax(260px,2fr) repeat(6,minmax(120px,1fr)) auto auto; gap:8px; align-items:center; margin:0 0 12px; }
 .filterBar input, .filterBar select { width:100%; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:10px 11px; outline:none; font:inherit; font-size:12px; }
 .filterBar input:focus, .filterBar select:focus { border-color:#42516a; }
 .filterBar button { border:1px solid var(--line); background:#f4f7fb; color:#0b0e13; border-radius:8px; padding:9px 12px; font-weight:750; cursor:pointer; }
+.salesStatus { min-width:88px; border:1px solid var(--line); border-radius:999px; padding:7px 9px; font:inherit; font-size:11px; font-weight:800; cursor:pointer; }
+.salesStatus.isSale { color:#9cf7bc; background:#103320; border-color:#275d3d; }
+.salesStatus.isNoSale { color:#d6dbe4; background:#202630; }
+.salesStatus:disabled { cursor:wait; opacity:.65; }
 .tableFooter { display:flex; justify-content:space-between; align-items:center; gap:14px; margin-top:10px; color:var(--muted); font-size:11px; }
 
 @media (max-width: 1180px) {

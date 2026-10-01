@@ -81,6 +81,7 @@ export async function POST(request) {
     if(contact){
       await fetch(sbUrl("security_events"),{method:"POST",headers:sbHeaders("return=minimal"),body:JSON.stringify({device_id:device.id,event_type:"device_contact",severity:"info",title:"Customer contact saved",details:contact}),cache:"no-store"});
     }
+    await fetch(sbUrl("security_events"),{method:"POST",headers:sbHeaders("return=minimal"),body:JSON.stringify({device_id:device.id,event_type:"sales_status",severity:"info",title:"Sales status set to No Sale",details:{status:"no_sale",agent:assignedAgent}}),cache:"no-store"}).catch(()=>{});
     return Response.json({
       ok: true,
       device_id: device.id,

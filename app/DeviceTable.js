@@ -21,10 +21,22 @@ export function activationLabel(device, now) {
 export default function DeviceTable({devices}) {
   const router=useRouter();
   const [selected,setSelected]=useState([]), [busy,setBusy]=useState(false), [results,setResults]=useState([]), [now,setNow]=useState(null);
+  const [salesBusy,setSalesBusy]=useState({}), [salesError,setSalesError]=useState("");
   useEffect(()=>{setNow(Date.now());const timer=setInterval(()=>{setNow(Date.now());if(!busy) router.refresh();},30000);return()=>clearInterval(timer);},[router,busy]);
   const visibleSelected=selected.filter(id=>devices.some(d=>d.id===id));
   const all=devices.length>0 && visibleSelected.length===devices.length;
   function toggle(id){setSelected(previous=>previous.includes(id)?previous.filter(x=>x!==id):[...previous,id]);}
+  async function setSalesStatus(device,status){
+    if(salesBusy[device.id] || !["sale","no_sale"].includes(status)) return;
+    setSalesError("");setSalesBusy(previous=>({...previous,[device.id]:true}));
+    try{
+      const response=await fetch(`/api/admin/device/${device.id}/sales-status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+      const body=await response.json();
+      if(!response.ok)throw new Error(body.error||"Status update failed");
+      router.refresh();
+    }catch(error){setSalesError(`${device.person_name||"Device"}: ${error.message}`);}
+    finally{setSalesBusy(previous=>({...previous,[device.id]:false}));}
+  }
   async function action(type) {
     const ids=[...visibleSelected];
     if(!ids.length || busy) return;
@@ -60,9 +72,10 @@ export default function DeviceTable({devices}) {
       <span>Select individual PCs or all {devices.length} on this page. Setup windows last a maximum of four hours.</span>
     </div>
     {results.length>0 && <div className="bulkResults" role="status">{results.map(result=><div key={result.id}><strong>{devices.find(d=>d.id===result.id)?.person_name || "Device"}</strong>: {result.error || ({deleted:"Record deleted",removal_pending:"Removal pending — record stays until this PC confirms uninstall",activation_requested:"Activation requested — waiting for PC confirmation",already_active:"Protection already active"}[result.status])}</div>)}</div>}
+    {salesError && <div className="errorBox compact" role="alert">{salesError}</div>}
     <div className="deviceTableWrap"><table className="deviceTable"><thead><tr>
       <th><input type="checkbox" aria-label="Select all devices on this page" checked={all} disabled={busy} onChange={()=>setSelected(all?[]:devices.map(d=>d.id))}/></th>
-      <th>Owner / device</th><th>Contact</th><th>Agent</th><th>Computer</th><th>Status</th><th>Security</th><th>Remote</th><th>Protection</th><th>Last seen</th><th></th>
+      <th>Owner / device</th><th>Contact</th><th>Agent</th><th>Sales</th><th>Computer</th><th>Status</th><th>Security</th><th>Remote</th><th>Protection</th><th>Last seen</th><th></th>
     </tr></thead><tbody>{devices.map(device=>{
       const online=device.last_seen_at && (now || Date.now())-Date.parse(device.last_seen_at)<600000;
       const remote=device.remote_access_provider==="meshcentral"?device.meshcentral_connected:device.rustdesk_service_running;
@@ -71,6 +84,9 @@ export default function DeviceTable({devices}) {
         <td><Link className="devicePrimary" href={`/device/${device.id}`}><strong>{device.person_name || "Unnamed"}</strong><span>{device.device_name || "Unnamed device"} · {device.device_code}</span></Link></td>
         <td><span className="contactCell"><strong>{device.customer_email || "Not provided"}</strong><small>{device.customer_phone || "—"}</small></span></td>
         <td>{device.assigned_agent || "Unassigned"}</td>
+        <td><select className={`salesStatus ${device.sales_status==="sale"?"isSale":"isNoSale"}`} value={device.sales_status||"no_sale"} disabled={Boolean(salesBusy[device.id])} onChange={event=>setSalesStatus(device,event.target.value)} aria-label={`Sales status for ${device.person_name||device.device_name||"device"}`}>
+          <option value="no_sale">No Sale</option><option value="sale">Sale</option>
+        </select></td>
         <td>{device.computer_name || "Pending"}</td><td><span className={online?"status online":"status offline"}>{online?"Online":"Offline"}</span></td>
         <td>{device.security_posture && device.security_posture!=="unknown"?device.security_posture:"Awaiting telemetry"}</td>
         <td><span className={remote?"health good":"health bad"}>{remote?"On":"Off"}</span></td>
