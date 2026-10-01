@@ -19,7 +19,7 @@ export async function POST(request) {
     if(devices.length!==selection.ids.length) return reply({error:"One or more selected devices no longer exist. Refresh and select again."},409);
     if(selection.action==="uninstall") {
       const results=[];
-      for(const device of devices){
+      for(let device of devices){
         if(!canUninstall(device.agent_version)){
           results.push({id:device.id,status:"failed",error:"Update this PC to 0.5.8 before requesting remote uninstall."}); continue;
         }
@@ -27,10 +27,31 @@ export async function POST(request) {
           results.push({id:device.id,status:"removal_pending"}); continue;
         }
         const nonce=crypto.randomBytes(32).toString("hex");
-        const previous=device.migration_status==null?"is.null":`eq.${encodeURIComponent(device.migration_status)}`;
         try{
-          const queued=await fetch(`${base}/rest/v1/devices?id=eq.${device.id}&migration_status=${previous}&select=id`,{method:"PATCH",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({migration_status:`removal_requested:${nonce}`}),cache:"no-store",signal:AbortSignal.timeout(4000)});
-          if(!queued.ok || !(await queued.json()).length) throw new Error("Device status changed. Refresh and retry.");
+          let accepted=false;
+          for(let attempt=0;attempt<3;attempt++){
+            if(removalId(device.migration_status)){accepted=true;break;}
+            const previous=device.migration_status==null?"is.null":`eq.${encodeURIComponent(device.migration_status)}`;
+            const queued=await fetch(`${base}/rest/v1/devices?id=eq.${device.id}&migration_status=${previous}&select=id`,{method:"PATCH",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({migration_status:`removal_requested:${nonce}`}),cache:"no-store",signal:AbortSignal.timeout(4000)});
+            if(!queued.ok){
+              // Return only a database error code, never raw details that may
+              // contain credentials, row data, or internal connection strings.
+              const failure=await queued.json().catch(()=>({}));
+              const code=/^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(failure.code || "")?failure.code:`HTTP ${queued.status}`;
+              if(code==="23514" || code==="22001" || code==="22P02") throw new Error(`Uninstall request rejected by dashboard storage (${code}). Database configuration needs updating; nothing was uninstalled.`);
+              throw new Error(`Unable to save uninstall request (${code}). Nothing was uninstalled.`);
+            }
+            if((await queued.json()).length){accepted=true;break;}
+            const latest=await fetch(`${base}/rest/v1/devices?id=eq.${device.id}&select=id,migration_status,agent_version`,{headers,cache:"no-store",signal:AbortSignal.timeout(4000)});
+            if(!latest.ok) throw new Error("Unable to check uninstall request. Refresh the dashboard before retrying.");
+            const rows=await latest.json();
+            if(!rows.length) throw new Error("Device record no longer exists. Refresh the dashboard.");
+            device=rows[0];
+            if(!canUninstall(device.agent_version)) throw new Error("Update this PC to 0.5.8 before requesting remote uninstall.");
+            // A second browser/request may already have queued this PC.
+            if(removalId(device.migration_status)){accepted=true;break;}
+          }
+          if(!accepted) throw new Error("PC status kept changing while saving uninstall. Nothing was uninstalled; retry shortly.");
           results.push({id:device.id,status:"removal_pending"});
         }catch(error){results.push({id:device.id,status:"failed",error:error.message});}
       }

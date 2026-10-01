@@ -52,3 +52,52 @@ test('heartbeat retries a concurrent dashboard uninstall without overwriting it'
   assert.equal(result.status,200);assert.equal((await result.json()).removal_request,nonce);assert.equal(calls.length,4);assert.equal(JSON.parse(calls[3].options.body).migration_status,undefined);
  });
 });
+
+const uninstallRequest=()=>new Request('https://dashboard.test/api/admin/devices/action',{method:'POST',headers:{authorization:'Basic '+Buffer.from('test:secret').toString('base64')},body:JSON.stringify({action:'uninstall',ids:[id],confirm:'uninstall_from_pc'})});
+test('uninstall retries a heartbeat status race with a fresh conditional filter',async()=>{
+ const calls=[];
+ await withFetch(async(url,options)=>{
+  calls.push({url,options});
+  if(calls.length===1) return Response.json([{...device,migration_status:'completed'}]);
+  if(calls.length===2) return Response.json([]);
+  if(calls.length===3) return Response.json([{...device,migration_status:'protected'}]);
+  assert.ok(url.includes('migration_status=eq.protected'));
+  assert.equal(options.body,calls[1].options.body);
+  return Response.json([{id}]);
+ },async()=>{
+  const result=await action(uninstallRequest());
+  assert.equal((await result.json()).results[0].status,'removal_pending');
+  assert.equal(calls.length,4);
+ });
+});
+test('uninstall recognizes a concurrently queued removal without replacing its nonce',async()=>{
+ const calls=[];
+ await withFetch(async(url,options)=>{
+  calls.push({url,options});
+  return Response.json(calls.length===1?[{...device,migration_status:'completed'}]:calls.length===2?[]:[device]);
+ },async()=>{
+  const result=await action(uninstallRequest());
+  assert.equal((await result.json()).results[0].status,'removal_pending');assert.equal(calls.length,3);
+ });
+});
+test('uninstall reports database rejection separately from a status race without exposing details',async()=>{
+ let calls=0;
+ await withFetch(async()=>{
+  calls++;
+  return calls===1?Response.json([{...device,migration_status:'completed'}]):Response.json({code:'23514',message:'private row data',details:'server-secret'}, {status:400});
+ },async()=>{
+  const result=await action(uninstallRequest());
+  const body=await result.json();assert.equal(body.results[0].status,'failed');
+  assert.match(body.results[0].error,/storage \(23514\)/);assert.doesNotMatch(JSON.stringify(body),/private row|server-secret|status changed/i);assert.equal(calls,2);
+ });
+});
+test('uninstall stops after three status conflicts and never deletes the record',async()=>{
+ let calls=0;
+ await withFetch(async(url,options)=>{
+  calls++;assert.notEqual(options.method,'DELETE');
+  return Response.json(options.method==='PATCH'?[]:[{...device,migration_status:'completed'}]);
+ },async()=>{
+  const result=await action(uninstallRequest());const body=await result.json();
+  assert.equal(body.results[0].status,'failed');assert.match(body.results[0].error,/kept changing/);assert.equal(calls,7);
+ });
+});
