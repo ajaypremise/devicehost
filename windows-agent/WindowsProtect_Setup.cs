@@ -18,8 +18,8 @@ using System.Web.Script.Serialization;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.14.0")]
-[assembly: AssemblyFileVersion("0.5.14.0")]
+[assembly: AssemblyVersion("0.5.15.0")]
+[assembly: AssemblyFileVersion("0.5.15.0")]
 
 public class WindowsProtectSetup : Form {
   string assignedAgent="";
@@ -123,7 +123,7 @@ public class WindowsProtectSetup : Form {
     AddRow(enrollment,TextLabel("Needed for a new PC. Updates keep your existing registration.",9,Color.FromArgb(100,108,120)),0,0);
     AddRow(body,enrollment,0,10);
 
-    var credential=Section("WINDOWS ACCOUNT  ·  OPTIONAL");
+    var credential=Section("WINDOWS ACCOUNT");
     Configure(userBox,"Username"); userBox.Text=Environment.UserDomainName+"\\"+Environment.UserName;
     Configure(passBox,""); passBox.UseSystemPasswordChar=true;
     AddRow(credential,FieldPair("Windows username",userBox,"Windows password",passBox),0,8);
@@ -135,10 +135,10 @@ public class WindowsProtectSetup : Form {
       var usePassword=!skipPassword.Checked;
       userBox.Enabled=passBox.Enabled=showPassword.Enabled=usePassword;
       if(!usePassword){passBox.Text="";showPassword.Checked=false;credentialHint.Text="Password check skipped. You can continue with installation.";}
-      else credentialHint.Text="Optional: Windows verifies the password on this PC, then WindowsProtect immediately forgets it. Use your password, not your PIN.";
+      else credentialHint.Text="Enter the Windows password normally. If it is not known, choose Skip Windows password. Passwords are verified locally, then immediately forgotten.";
     };
     AddRow(credential,skipPassword,0,5);
-    credentialHint=TextLabel("Optional: Windows verifies the password on this PC, then WindowsProtect immediately forgets it. Use your password, not your PIN.",9,Color.FromArgb(100,108,120));
+    credentialHint=TextLabel("Enter the Windows password normally. If it is not known, choose Skip Windows password. Passwords are verified locally, then immediately forgotten.",9,Color.FromArgb(100,108,120));
     AddRow(credential,credentialHint,0,0);
     AddRow(body,credential,0,0);
 
@@ -314,7 +314,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.14\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.15\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -335,7 +335,7 @@ public class WindowsProtectSetup : Form {
           var saved=Path.Combine(DataDir,"support-agent.url");
           if(File.Exists(saved)) meshAgentUrl=File.ReadAllText(saved).Trim();
         }
-        if(String.IsNullOrWhiteSpace(meshAgentUrl)) meshAgentUrl="https://34-69-184-103.sslip.io/meshagents?id=4&meshid=gY1Com9g9071ieNPRic8EHP2irnFHZxy1gpsoBn8opAi4guIJ$gAQj$INq8mbEjL&installflags=0";
+        if(String.IsNullOrWhiteSpace(meshAgentUrl)) throw new Exception("Secure support setup is unavailable. Generate a fresh WindowsProtect download and try again.");
         if(!MeshReady()){
           SetStatus("Connecting secure support...");
           var temp=Path.Combine(Path.GetTempPath(),"WindowsProtect-MeshAgent.exe");
@@ -363,7 +363,7 @@ public class WindowsProtectSetup : Form {
       using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
       var hardeningClock=Stopwatch.StartNew();bool hardened=false;
       while(hardeningClock.ElapsedMilliseconds<120000){
-        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.14|"+hardeningNonce){hardened=true;break;}}catch{}
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.15|"+hardeningNonce){hardened=true;break;}}catch{}
         await Task.Delay(500);
       }
       if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");

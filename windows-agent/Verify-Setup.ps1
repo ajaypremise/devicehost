@@ -184,7 +184,7 @@ try {
     Check ($proofCheck.Invoke($null,@([string]$noDesktop,[string]$proofDir)) -eq '') 'A command without desktop verification activated protection.'
     Write-Output 'Support activation: verified setup waits for dashboard activation; four-hour deadline survives retries; expiry activates offline; active repairs preserve protection.'
   } finally { Remove-Item $proofDir -Recurse -Force }
-  (Field 'credentialHint').Text = 'Optional: Windows verifies the password on this PC, then WindowsProtect immediately forgets it. Use your password, not your PIN.'
+  (Field 'credentialHint').Text = 'Enter the Windows password normally. If it is not known, choose Skip Windows password. Passwords are verified locally, then immediately forgotten.'
   (Field 'credentialHint').ForeColor = [Drawing.Color]::FromArgb(100,108,120)
   (Field 'userBox').Text = [Environment]::UserDomainName + '\' + [Environment]::UserName
   (Field 'passBox').Text = ''

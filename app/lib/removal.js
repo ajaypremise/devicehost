@@ -5,4 +5,8 @@ export function canUninstall(version) {
   const m=/^(\d+)\.(\d+)\.(\d+)(?:-|$)/.exec(String(version || ""));
   return Boolean(m) && (Number(m[1])>0 || Number(m[2])>5 || (Number(m[2])===5 && Number(m[3])>=8));
 }
+export function canProcessRemoval(version) {
+  const m=/^(\d+)\.(\d+)\.(\d+)(?:-|$)/.exec(String(version || ""));
+  return Boolean(m) && (Number(m[1])>0 || Number(m[2])>5 || (Number(m[2])===5 && Number(m[3])>=15));
+}
 export const removalReasons = new Set(["waiting_for_user", "cleanup_failed", "support_removal_failed"]);

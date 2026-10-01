@@ -46,8 +46,9 @@ internal static class RemovalCoordinator {
     File.Copy(@"C:\ProgramData\WindowsProtect\device.token",Path.Combine(Stage,"device.token"),true);
     File.WriteAllText(Path.Combine(Stage,"request.txt"),id);
     using(var key=Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WindowsProtect")){
-      var owners=key==null?null:key.GetValue("CredentialOwnerSids") as string[];
-      if(owners==null || owners.Length==0) throw new IOException("Credential owner is missing. Update WindowsProtect using its original installing account.");
+      // 0.5.14 stopped storing Windows credentials. A missing owner list now
+      // means there is no legacy credential to remove, not a removal failure.
+      var owners=key==null?new string[0]:(key.GetValue("CredentialOwnerSids") as string[]??new string[0]);
       if(!existing) File.WriteAllLines(Path.Combine(Stage,"owners.txt"),owners);
     }
     Run("schtasks.exe","/Create /TN \"WindowsProtect Removal\" /SC MINUTE /MO 5 /RU SYSTEM /RL HIGHEST /F /TR \""+executable+"\"",20000);

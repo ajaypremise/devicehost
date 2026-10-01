@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { removalId } from "../../lib/removal.js";
+import { canProcessRemoval, removalId } from "../../lib/removal.js";
 import { meshcentralConfigured, syncMeshCentralDevice } from "../../lib/meshcentral.js";
 
 export const runtime = "nodejs";
@@ -79,7 +79,11 @@ export async function POST(request) {
             await syncMeshCentralDevice({nodeId:supportNode,name:device.person_name,description:device.device_name,force:Boolean(firstSupportIdentity||agentJustUpdated)});
           }catch{}
         }
-        return Response.json({ok:true,server_time:new Date().toISOString(),ultraviewer_allowed_until:allowedUntil,...(nonce?{removal_request:nonce}:{})});
+        // Keep the request queued but withhold it from the 0.5.14 agent whose
+        // password-removal compatibility bug would otherwise block its own
+        // automatic update. The updated agent receives it on its next heartbeat.
+        const removalReady=nonce && canProcessRemoval(device.agent_version);
+        return Response.json({ok:true,server_time:new Date().toISOString(),ultraviewer_allowed_until:allowedUntil,...(removalReady?{removal_request:nonce}:{})});
       }
       device=await getDevice(token);
       if(!device) return Response.json({error:"Unauthorized"},{status:401});

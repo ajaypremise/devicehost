@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-export const installerVersion='0.5.14';
+export const installerVersion='0.5.15';
 export const installerUrl=`https://github.com/ajaypremise/devicehost/releases/download/v${installerVersion}/WindowsProtect_Setup.exe`;
 const checksumUrl=`https://github.com/ajaypremise/devicehost/releases/download/v${installerVersion}/installer-sha256.json`;
 export async function fetchInstaller(){
