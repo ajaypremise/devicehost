@@ -32,3 +32,14 @@ grant select, insert, update, delete on public.software_inventory to service_rol
 
 create index if not exists software_inventory_device_idx
   on public.software_inventory(device_id, is_remote_access, app_name);
+
+-- Lifecycle states used by 0.5.7+ setup and 0.5.8+ authenticated removal.
+-- The original four states remain valid; unrelated constraints are preserved.
+begin;
+alter table public.devices drop constraint if exists devices_migration_status_check;
+alter table public.devices add constraint devices_migration_status_check check (
+  migration_status in ('not_started','ultraviewer_active','rustdesk_ready','completed')
+  or migration_status ~ '^(verifying_support|awaiting_activation):[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$'
+  or migration_status ~ '^removal_requested:[a-f0-9]{64}(:waiting_for_user|:cleanup_failed|:support_removal_failed)?$'
+);
+commit;

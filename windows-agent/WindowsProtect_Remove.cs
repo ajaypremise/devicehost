@@ -60,6 +60,7 @@ internal static class WindowsProtectRemoval {
         DeleteTree(Install);
         DeleteTree(Data);
         Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\WindowsProtect",false);
+        Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WindowsProtect",false);
         reason="support_removal_failed";
         // Remove the approved support agent last. The detached remover uses
         // HTTPS directly, so losing the desktop tunnel cannot interrupt cleanup.

@@ -42,3 +42,11 @@ Do not deploy an unverified WindowsProtect build to a family PC. First validate 
 ## Installer configuration
 
 Set `MESHCENTRAL_AGENT_URL` in Vercel to the server-generated Windows x64 agent URL for the approved `WindowsProtect Family` MeshCentral device group. The one-time setup-code redemption endpoint returns this URL only after a valid short-lived code is redeemed.
+
+## Managed removal protection (0.5.9-test)
+
+The installer confirms service hardening before reporting installation complete. Protection and its approved support agent stay visible as WindowsProtect components. Their normal Control Panel removal option is disabled, and service, installation-file and activation-setting ACLs give SYSTEM write/control access while administrators retain read/query access. Service failure recovery and periodic permission reapplication resist ordinary stop/disable/delete attempts. The authenticated dashboard removal worker runs as SYSTEM and can still remove the components.
+
+Updates require the already mandatory real Windows password check. The installer then uses administrator ownership/restore privileges to open a ten-minute maintenance window, which does not switch off existing remote-tool blocking or extend activation. It confirms fresh hardening after the update. Administrators can use those same Windows privileges to override this protection manually; recovery-mode access, administrator/SYSTEM compromise and operating-system reinstallation remain outside this guarantee. This is managed removal resistance, not an invisible or undeletable installation.
+
+Apply the lifecycle constraint section in `supabase/devicehost_monitoring.sql` to the DeviceHost database. It retains existing states and accepts setup deadlines and nonce-bound removal requests. It makes no changes to protection-status/security-posture constraints or database privileges.

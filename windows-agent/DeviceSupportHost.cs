@@ -13,7 +13,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.8-test";
+  const string AgentVersion="0.5.9-test";
 
   static readonly string[] BlockedProcessNames = new[]{
     "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
@@ -39,6 +39,7 @@ public sealed class DeviceSupportHost : ServiceBase {
   Timer timer,policyTimer;
   volatile bool protectionActive;
   bool baselineApplied;
+  DateTime lastHardening=DateTime.MinValue, lastHardeningError=DateTime.MinValue;
   int ticking,policyTicking;
   static bool removalLaunched;
 
@@ -64,12 +65,19 @@ public sealed class DeviceSupportHost : ServiceBase {
   }
 
   protected override void OnCustomCommand(int command){
-    if(command==128){ EnforceActivation(); ThreadPool.QueueUserWorkItem(_=>Tick()); }
+    if(command==128){ lastHardening=DateTime.MinValue; EnforceActivation(); ThreadPool.QueueUserWorkItem(_=>Tick()); }
   }
 
   void Tick(){
     if(Interlocked.CompareExchange(ref ticking,1,0)!=0) return;
     try{
+      if(TamperProtection.Enabled() && !TamperProtection.Maintenance() && (DateTime.UtcNow-lastHardening).TotalMinutes>=5){
+        try{TamperProtection.Apply();lastHardening=DateTime.UtcNow;}
+        catch(Exception ex){
+          Log("Removal protection configuration failed: "+ex.GetType().Name+" - "+ex.Message);
+          if((DateTime.UtcNow-lastHardeningError).TotalMinutes>=10){lastHardeningError=DateTime.UtcNow;SendEvent("protection_tamper","critical","Removal protection needs attention","WindowsProtect could not confirm its service/file permissions. Check the PC before treating it as protected against removal.");}
+        }
+      }
       if(!protectionActive && ProtectionActivation.IsActive()) protectionActive=true;
       if(protectionActive){
         BlockUnauthorizedRemoteTools();

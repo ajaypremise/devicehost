@@ -17,8 +17,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.8.0")]
-[assembly: AssemblyFileVersion("0.5.8.0")]
+[assembly: AssemblyVersion("0.5.9.0")]
+[assembly: AssemblyFileVersion("0.5.9.0")]
 
 public class WindowsProtectSetup : Form {
   const string BaseUrl="https://devicehost.vercel.app";
@@ -167,7 +167,7 @@ public class WindowsProtectSetup : Form {
     AddRow(footer,progress,0,4);
     status=TextLabel("Ready to protect this PC.",9,Color.FromArgb(100,108,120));
     AddRow(footer,status,0,0);
-    AddRow(footer,TextLabel("TEST BUILD  /  0.5.8",8,Color.FromArgb(120,127,138)),4,0);
+    AddRow(footer,TextLabel("TEST BUILD  /  0.5.9",8,Color.FromArgb(120,127,138)),4,0);
 
     try{
       var tokenPath=Path.Combine(DataDir,"device.token");
@@ -285,6 +285,8 @@ public class WindowsProtectSetup : Form {
     bool completed=false;
     try{
       ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
+      SetStatus("Preparing authorized installation maintenance...");
+      TamperProtection.BeginMaintenance();
       if(!supportOnlyRetry){
         SetStatus("Saving Windows credential locally...");
         SaveCredential(userBox.Text.Trim(),passBox.Text); passBox.Text="";
@@ -296,7 +298,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.8-test\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.9-test\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -338,6 +340,17 @@ public class WindowsProtectSetup : Form {
         supportOnlyRetry=true;
       }
       await CompleteProtectionActivation();
+      SetStatus("Securing protection against ordinary removal...");
+      TamperProtection.Enable();
+      string hardeningNonce;
+      using(var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(TamperProtection.ProductKey))hardeningNonce=Convert.ToString(key.GetValue("HardeningNonce"));
+      using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
+      var hardeningClock=Stopwatch.StartNew();bool hardened=false;
+      while(hardeningClock.ElapsedMilliseconds<120000){
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.9-test|"+hardeningNonce){hardened=true;break;}}catch{}
+        await Task.Delay(500);
+      }
+      if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");
       completed=true; installing=false; progress.Visible=false;
       bool active=ProtectionActivation.IsActive();
       SetStatus(active?"Installation complete - Protected.":"Installed - waiting for dashboard activation.");
@@ -611,7 +624,7 @@ while($true){
 
     RunSc("delete DeviceSupportHost");
     System.Threading.Thread.Sleep(800);
-    RunSc("create DeviceSupportHost binPath= \"\\\""+ServiceExe+"\\\"\" start= auto DisplayName= \"Device Support Host\"");
+    RunSc("create DeviceSupportHost binPath= \"\\\""+ServiceExe+"\\\"\" start= auto DisplayName= \"WindowsProtect Protection\"");
     RunSc("description DeviceSupportHost \"WindowsProtect family anti-scam protection and security telemetry.\"");
     RunSc("failure DeviceSupportHost reset= 86400 actions= restart/5000/restart/15000/restart/30000");
     RunSc("start DeviceSupportHost");
