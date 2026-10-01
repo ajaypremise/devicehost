@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Threading;
 using Microsoft.Win32;
 
 // Managed, visible installation. These ACLs resist normal removal operations;
@@ -129,7 +130,22 @@ internal static class TamperProtection {
   // This is called ONLY after the installer has validated the Windows password.
   // It does not disable remote-tool blocking or extend the four-hour deadline.
   internal static void EnableMaintenancePrivileges(){Privilege("SeTakeOwnershipPrivilege");Privilege("SeRestorePrivilege");}
-  internal static void BeginMaintenance(){
+  static void Exclusive(Action action){
+    var security=new MutexSecurity();
+    security.AddAccessRule(new MutexAccessRule(Sid("S-1-5-18"),MutexRights.FullControl,AccessControlType.Allow));
+    security.AddAccessRule(new MutexAccessRule(Sid("S-1-5-32-544"),MutexRights.FullControl,AccessControlType.Allow));
+    bool created;
+    using(var mutex=new Mutex(false,@"Global\WindowsProtectHardening",out created,security)){
+      bool held=false;
+      try{
+        try{held=mutex.WaitOne(TimeSpan.FromSeconds(30));}catch(AbandonedMutexException){held=true;}
+        if(!held)throw new IOException("Another protection maintenance operation is still running. Retry shortly.");
+        action();
+      }finally{if(held)mutex.ReleaseMutex();}
+    }
+  }
+  internal static void BeginMaintenance(){Exclusive(BeginMaintenanceCore);}
+  static void BeginMaintenanceCore(){
     EnableMaintenancePrivileges();
     SetRegistry(ProductKey,false);
     using(var key=Registry.LocalMachine.CreateSubKey(ProductKey))key.SetValue("MaintenanceUntilUtc",DateTime.UtcNow.AddMinutes(10).ToString("o",CultureInfo.InvariantCulture));
@@ -141,7 +157,8 @@ internal static class TamperProtection {
       SetService(name,false);SetRegistry(@"SYSTEM\CurrentControlSet\Services\"+name,false);SetDirectory(Path.GetDirectoryName(path),false,true);UnlockSupportEntry(path);
     }
   }
-  internal static void Apply(){
+  internal static void Apply(){Exclusive(ApplyCore);}
+  static void ApplyCore(){
     if(!IsSystem())throw new UnauthorizedAccessException("Service hardening must run as SYSTEM.");
     if(!Enabled() || Maintenance())return;
     SetDirectory(Install,true,true);SetDirectory(Data,true,false);
