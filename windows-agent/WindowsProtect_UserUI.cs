@@ -82,10 +82,12 @@ public sealed class WindowsProtectUserUI : ApplicationContext {
       var footer=new Panel{Name="DialogFooter",Dock=DockStyle.Bottom,Height=62,BackColor=SystemColors.Control};
       var ok=new Button{
         Name="DialogOK",
-        Text="OK",Width=90,Height=30,Left=w-110,Top=16,
+        Text="OK",Width=90,Height=30,
         Anchor=AnchorStyles.Right|AnchorStyles.Bottom,UseVisualStyleBackColor=true,
         DialogResult=DialogResult.OK,AccessibleName="Close WindowsProtect message"
       };
+      Action positionButton=()=>ok.Location=new Point(Math.Max(0,footer.ClientSize.Width-ok.Width-20),Math.Max(0,(footer.ClientSize.Height-ok.Height)/2));
+      footer.Resize+=(sender,e)=>positionButton();
       footer.Controls.Add(ok);f.Controls.Add(footer);f.AcceptButton=ok;f.CancelButton=ok;
       var icon=kind=="information"?SystemIcons.Information:kind=="error"?SystemIcons.Error:SystemIcons.Warning;
       f.Icon=icon;
@@ -100,7 +102,7 @@ public sealed class WindowsProtectUserUI : ApplicationContext {
         Font=f.Font,DetectUrls=false,WordWrap=true,ScrollBars=RichTextBoxScrollBars.Vertical,
         Location=new Point(84,86),Size=new Size(w-108,h-164),TabStop=false
       };
-      f.Controls.Add(picture);f.Controls.Add(heading);f.Controls.Add(body);
+      f.Controls.Add(picture);f.Controls.Add(heading);f.Controls.Add(body);positionButton();
       return f;
   }
 
