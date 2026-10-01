@@ -11,7 +11,7 @@ const DEVICE_API_PREFIXES = [
   "/api/agent/update",
 ];
 
-const PUBLIC_PATHS = ["/download", "/api/public/installer"];
+const PUBLIC_PATHS = ["/download", "/api/public/installer", "/api/public/download"];
 
 export function proxy(request) {
   const pathname = request.nextUrl.pathname;

@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {setupZip,installerUrl} from '../app/lib/setup-package.js';
+import {readDownloadToken} from '../app/lib/download-links.js';
 import {POST} from '../app/api/admin/installer/route.js';
 import {POST as publicDownload} from '../app/api/public/installer/route.js';
+import {GET as sharedDownload} from '../app/api/public/download/[token]/route.js';
 process.env.SUPABASE_URL='https://db.test';process.env.SUPABASE_SECRET_KEY='server-secret';process.env.DASHBOARD_USER='test';process.env.DASHBOARD_PASSWORD='secret';
 const auth='Basic '+Buffer.from('test:secret').toString('base64');
 const exe=Buffer.alloc(2048,0);exe.write('MZ');
@@ -47,21 +49,37 @@ test('public self-service download validates origin and contact fields before an
   assert.equal((await publicDownload(invalid)).status,400);
  });
 });
-test('public page creates a private one-time package without putting phone or email in the installer',async()=>{
+test('public page creates an encrypted share link without exposing contact or installer details',async()=>{
  const calls=[];
  await mocked(async(url,options)=>{
   calls.push({url:String(url),options});
   if(String(url).includes('setup_codes?'))return Response.json([]);
-  if(url===installerUrl)return new Response(exe);
-  if(String(url).endsWith('installer-sha256.json'))return Response.json({version:'0.5.12',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
-  assert.equal(url,'https://db.test/rest/v1/setup_codes');return new Response(null,{status:201});
+  assert.fail(`unexpected fetch ${url}`);
  },async()=>{
   const body={name:'Meera Singh',phone:'+91 98765 43210',email:'Meera@Example.com',agent:'Ashu',pc_name:''};
   const request=new Request('https://dashboard.test/api/public/installer',{method:'POST',headers:{origin:'https://dashboard.test','content-type':'application/json','x-forwarded-for':'192.0.2.21'},body:JSON.stringify(body)});
-  const response=await publicDownload(request);assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/WindowsProtect-Meera-s-PC\.zip/);
-  const zip=Buffer.from(await response.arrayBuffer()),config=JSON.parse(files(zip)['WindowsProtect_Setup.json']);
-  assert.equal(config.owner,'Meera Singh');assert.equal(config.label,"Meera's PC");assert.equal(config.agent,'Ashu');assert.match(config.code,/^[A-F0-9-]{14}$/);
-  assert.equal(zip.includes(Buffer.from('9876543210')),false);assert.equal(zip.includes(Buffer.from('meera@example.com')),false);
-  const insert=JSON.parse(calls.find(call=>call.options?.method==='POST').options.body);assert.match(insert.label,/^public:[a-f0-9]{24}:Meera's PC$/);assert.equal(calls.length,4);
+  const response=await publicDownload(request);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);
+  const result=await response.json();assert.equal(result.filename,'WindowsProtect-Meera-s-PC.zip');assert.match(result.download_url,/^https:\/\/dashboard\.test\/api\/public\/download\/[A-Za-z0-9_-]+$/);assert.ok(Date.parse(result.expires_at)>Date.now());
+  assert.equal(result.download_url.includes('Meera'),false);assert.equal(result.download_url.includes('Ashu'),false);assert.equal(result.download_url.includes('98765'),false);
+  const token=result.download_url.split('/').pop(),details=readDownloadToken(token);assert.equal(details.owner,'Meera Singh');assert.equal(details.label,"Meera's PC");assert.equal(details.agent,'Ashu');assert.match(details.fingerprint,/^[a-f0-9]{24}$/);assert.equal(calls.length,1);
  });
+});
+test('share link directly downloads a prepared package with a four-hour one-time code',async()=>{
+ const createRequest=new Request('https://dashboard.test/api/public/installer',{method:'POST',headers:{origin:'https://dashboard.test','content-type':'application/json','x-forwarded-for':'192.0.2.22'},body:JSON.stringify({name:'Ravi Kumar',phone:'+91 90000 00000',email:'ravi@example.com',agent:'Koko',pc_name:'Office PC'})});
+ let token;
+ await mocked(async url=>{assert.ok(String(url).includes('setup_codes?'));return Response.json([]);},async()=>{token=(await (await publicDownload(createRequest)).json()).download_url.split('/').pop();});
+ const calls=[];
+ await mocked(async(url,options={})=>{
+  calls.push({url:String(url),options});
+  if(String(url).includes('setup_codes?'))return Response.json([]);
+  if(url===installerUrl)return new Response(exe);
+  if(String(url).endsWith('installer-sha256.json'))return Response.json({version:'0.5.12',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
+  assert.equal(url,'https://db.test/rest/v1/setup_codes');assert.equal(options.method,'POST');return new Response(null,{status:201});
+ },async()=>{
+  const response=await sharedDownload(new Request(`https://dashboard.test/api/public/download/${token}`),{params:Promise.resolve({token})});assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/WindowsProtect-Office-PC\.zip/);
+  const zip=Buffer.from(await response.arrayBuffer()),config=JSON.parse(files(zip)['WindowsProtect_Setup.json']);assert.equal(config.owner,'Ravi Kumar');assert.equal(config.label,'Office PC');assert.equal(config.agent,'Koko');assert.match(config.code,/^[A-F0-9-]{14}$/);const remaining=Date.parse(config.expires_at)-Date.now();assert.ok(remaining>239*60000&&remaining<=240*60000);assert.equal(calls.length,4);
+ });
+});
+test('tampered share links fail before database or release access',async()=>{
+ await mocked(()=>assert.fail('fetch must not run'),async()=>{const response=await sharedDownload(new Request('https://dashboard.test/api/public/download/bad'),{params:Promise.resolve({token:'bad'})});assert.equal(response.status,410);assert.match((await response.json()).error,/invalid/i);});
 });

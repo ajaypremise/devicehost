@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { fetchInstaller, setupZip } from "../../../lib/setup-package.js";
-import { issueSetupCode, recentPublicRequests } from "../../../lib/setup-codes.js";
+import { createDownloadToken, safeFilename } from "../../../lib/download-links.js";
+import { recentPublicRequests } from "../../../lib/setup-codes.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -53,14 +53,9 @@ export async function POST(request) {
     const fingerprint = crypto.createHmac("sha256", secret).update(`${email}|${phone}`).digest("hex").slice(0, 24);
     if (await recentPublicRequests(fingerprint) >= 3) return Response.json({ error: "This contact has already requested several downloads. Please use the newest one or try again later." }, { status: 429 });
 
-    const installer = await fetchInstaller();
-    const code = await issueSetupCode(`public:${fingerprint}:${pcName}`.slice(0, 120), 30);
-    const bytes = setupZip(installer, { code, owner: name, label: pcName, agent, expires_at: new Date(Date.now() + 30 * 60000).toISOString() });
-    const filename = `WindowsProtect-${pcName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 40) || "PC"}.zip`;
-    return new Response(bytes, { headers: {
-      "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"
-    }});
+    const { token, expiresAt } = createDownloadToken({ owner: name, label: pcName, agent, fingerprint });
+    const downloadUrl = new URL(`/api/public/download/${token}`, request.url).toString();
+    return Response.json({ download_url: downloadUrl, expires_at: expiresAt, filename: safeFilename(pcName) }, { headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
   } catch {
     return Response.json({ error: "The download could not be prepared. Please wait a moment and try again." }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }

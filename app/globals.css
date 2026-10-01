@@ -245,6 +245,14 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .downloadError { border:1px solid #e1a1a7; background:#fff4f5; color:#9b1c2c; }
 .downloadSuccess { display:grid; gap:3px; border:1px solid #8ec8ac; background:#f0faf5; color:#165c3d; }
 .downloadSuccess span { color:#32644f; }
+.shareDownload { gap:10px; }
+.shareActions { display:flex; gap:9px; flex-wrap:wrap; }
+.shareActions a,.shareActions button { border:1px solid #165c3d; border-radius:7px; padding:10px 14px; text-decoration:none; font:inherit; font-weight:750; cursor:pointer; }
+.shareActions a { background:#165c3d; color:#fff; }
+.shareActions button { grid-column:auto; background:#fff; color:#165c3d; }
+.shareLinkLabel { display:grid; gap:6px; color:#275c46; font-size:12px; }
+.shareLinkLabel input { background:#fff; color:#344252; font-size:12px; }
+.shareDownload small { color:#476e5d; line-height:1.45; }
 .downloadPrivacy { margin:22px 0 0; padding-top:18px; border-top:1px solid #e2e6eb; color:#687687; font-size:12px; line-height:1.55; }
 @media (max-width:560px) { .publicDownloadForm { grid-template-columns:1fr; } }
 

@@ -2,18 +2,20 @@
 import { useState } from "react";
 
 export default function PublicDownloadForm() {
-  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[done,setDone]=useState(false);
+  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[result,setResult]=useState(null),[copied,setCopied]=useState(false);
   async function submit(event) {
-    event.preventDefault();setBusy(true);setError("");setDone(false);
+    event.preventDefault();setBusy(true);setError("");setResult(null);setCopied(false);
     const form=new FormData(event.currentTarget);
     try {
       const response=await fetch("/api/public/installer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.fromEntries(form))});
       if(!response.ok){const data=await response.json();throw new Error(data.error || "Unable to prepare download.");}
-      const blob=await response.blob(),url=URL.createObjectURL(blob);
-      const match=/filename="([^"]+)"/.exec(response.headers.get("content-disposition") || "");
-      const link=document.createElement("a");link.href=url;link.download=match?.[1] || "WindowsProtect_Setup.zip";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);setDone(true);
+      setResult(await response.json());
     } catch (problem) { setError(problem.message || "Unable to prepare download."); }
     finally { setBusy(false); }
+  }
+  async function copyLink(){
+    try{await navigator.clipboard.writeText(result.download_url);setCopied(true);setTimeout(()=>setCopied(false),2500);}
+    catch{setError("Copy was blocked by the browser. Select the link and copy it manually.");}
   }
   return <form className="publicDownloadForm" onSubmit={submit}>
     <label>Full name<input name="name" autoComplete="name" maxLength={80} required /></label>
@@ -24,6 +26,12 @@ export default function PublicDownloadForm() {
     <input className="downloadTrap" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
     <button disabled={busy} type="submit">{busy ? "Preparing your download…" : "Download WindowsProtect"}</button>
     {error && <div className="downloadError" role="alert">{error}</div>}
-    {done && <div className="downloadSuccess" role="status"><strong>Your download is ready.</strong><span>Open Downloads, extract the ZIP, then run WindowsProtect_Setup.exe. Keep both files together.</span></div>}
+    {result && <div className="downloadSuccess shareDownload" role="status">
+      <strong>Your private download is ready.</strong>
+      <span>Download it here or copy the link and send it to the person installing the PC. The link expires in 24 hours.</span>
+      <div className="shareActions"><a href={result.download_url}>Download now</a><button type="button" onClick={copyLink}>{copied ? "Copied" : "Copy link"}</button></div>
+      <label className="shareLinkLabel">Shareable link<input value={result.download_url} readOnly onFocus={event=>event.currentTarget.select()} /></label>
+      <small>After downloading: extract the ZIP, keep both files together, and run WindowsProtect_Setup.exe. The installer code is valid for four hours.</small>
+    </div>}
   </form>;
 }
