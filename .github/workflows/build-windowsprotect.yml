@@ -87,12 +87,12 @@ jobs:
           }
           $files | ForEach-Object { Get-FileHash $_ -Algorithm SHA256 } | Format-List | Out-File SHA256.txt
           $signing = if ($env:SIGNING_ENABLED -eq 'true') { 'Trusted signing enabled; signatures verified.' } else { 'UNSIGNED TEST BUILD. Windows may show SmartScreen and unknown-publisher warnings. Trusted signing is not configured.' }
-          @("WindowsProtect 0.5.6-test", "Commit: $env:GITHUB_SHA", $signing, 'Run WindowsProtect_Setup.exe on the disposable Windows test PC.', 'Updates/repairs do not need a new setup code. Windows username and password are required; a PIN is not a password.') | Out-File BUILD-INFO.txt
+          @("WindowsProtect 0.5.7-test", "Commit: $env:GITHUB_SHA", $signing, 'Run WindowsProtect_Setup.exe on the disposable Windows test PC.', 'Updates/repairs do not need a new setup code. Windows username and password are required; a PIN is not a password.') | Out-File BUILD-INFO.txt
           $signing | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: WindowsProtect-v0.5.6-test
+          name: WindowsProtect-v0.5.7-test
           path: |
             WindowsProtect_Test.exe
             DeviceSupportHost.exe

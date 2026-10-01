@@ -261,3 +261,12 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .remoteActionOptions label { display:grid; gap:6px; color:var(--muted); font-size:11px; }
 .remoteActionOptions select { width:100%; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:9px 10px; font-size:12px; }
 @media (max-width:560px) { .remoteActionOptions { grid-template-columns:1fr; } }
+
+.bulkActions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 0; }
+.bulkActions span { flex-basis:100%; color:var(--muted); font-size:12px; }
+.bulkActions button:disabled { opacity:.5; cursor:default; }
+.dangerAction { color:#ffb5ba; }
+.bulkResults { padding:12px; margin-bottom:12px; border:1px solid var(--line); border-radius:8px; font-size:12px; line-height:1.7; }
+.activationCell { min-width:180px; max-width:250px; }
+.activationCell small { display:block; color:var(--muted); margin-top:4px; }
+.deviceTable input[type=checkbox] { width:17px; height:17px; cursor:pointer; }

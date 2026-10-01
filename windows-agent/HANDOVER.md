@@ -1,25 +1,13 @@
-# WindowsProtect setup handover (0.5.6-test)
+# WindowsProtect setup window (0.5.7-test)
 
-New setup registers the PC once and starts the WindowsProtect service in **pending** mode. Pending mode reports telemetry and keeps the approved support agent available; it does not run remote-tool blocking or change the security baseline.
+New installations start a fixed four-hour window when installation of protection components begins. HKLM stores the original UTC deadline; retries, repairs, reopening setup, and restarts do not renew it. Already-active installations remain active and do not receive a fresh setup window.
 
-The installer keeps its progress bar moving while DeviceHost:
+Setup verifies a live approved desktop stream and a fresh command round trip to this PC. On success it marks support verified and displays **Installed — waiting for dashboard activation**. UltraViewer and other listed remote tools remain available during the pending window. The dashboard shows the reported deadline and a countdown; it refreshes every 30 seconds.
 
-1. Authenticates the device token and reads this device's recently reported node ID.
-2. Opens an authenticated, TLS-verified MeshCentral desktop tunnel.
-3. Requires desktop dimensions and a JPEG tile, not just relay pairing or online status. Screen bytes are discarded and are not returned to the device or stored.
-4. Sends a fixed PowerShell command through approved support to write a fresh 256-bit challenge in the administrator-only setup directory.
+**Activate protection** rechecks the PC's recent enrolled support identity, desktop stream, and fresh local command proof. A fixed command requests activation. The local service checks the matching proof, activates blocking, and reports protected through heartbeat. The dashboard reports **Activation requested**, not Protected, until the PC confirms. Activating disconnects blocked remote tools. There is no dashboard deactivation control.
 
-The installer requires both server desktop verification and the exact fresh local challenge file. It then persists activation in HKLM and requests a service check. The service applies the baseline, blocks listed unauthorized remote tools, and writes the activation acknowledgment. Only then does setup display **Installation complete - Protected**.
+When the four-hour deadline is reached, the local service activates protection even without the dashboard, internet connectivity, or successful support verification. This deadline intentionally takes priority over keeping UltraViewer available. If the PC is powered off, it activates on the next service start after expiry. The local policy timer checks each second; heavy maintenance/telemetry remains every 30 seconds. A monotonic clock and persisted last-observed time resist ordinary clock rollback; a local administrator can still tamper with the machine or stop its service. This is not tamper-proof endpoint enforcement.
 
-Support verification has a 60-second budget; service activation confirmation has a separate 45-second budget. If support verification fails, protection remains pending and the existing remote tool remains available. **Retry support check** resumes this checkpoint without redeeming a new code, registering another device or reinstalling components. Reopening setup also reuses registration, although it runs component repair before verification.
+Bulk actions select 1–100 visible devices. Activation uses up to three independent per-PC requests concurrently; each must verify its own support proof, and failures are reported individually. Deletion requires confirmation, runs one ID-filtered DELETE, and reports only rows actually removed. Deleting dashboard records revokes monitoring via those enrollment tokens and removes related records according to existing database foreign keys. It does not uninstall WindowsProtect, disconnect approved support, or turn off local protection. No database schema change is required; the existing migration_status text field carries the window phase and UTC deadline.
 
-Once activation is persisted, a lost support connection or failed final acknowledgment never changes it back to pending. Retry then finishes acknowledgment. Existing protected legacy PCs are migrated to active; updates preserve active state. A pending installation is never inferred to be active just because its service already exists.
-
-Verification in CI:
-
-- Windows checks: real correct/wrong passwords, blank fields, no credential write on rejection, layout, persistent pending/active state across initialization, legacy migration, and rejection of absent/stale local proof or missing desktop verification.
-- App checks: real WebSocket protocol fixtures, fragmented/jumbo desktop frames, relay-only and size-only failures, denied commands, TLS requirements, device-token authentication, and stale/missing device support identity.
-
-An actual installation on the disposable Windows test PC is still required to exercise the live deployed support server and endpoint together. The automated probe proves desktop streaming and command execution at activation time; it cannot guarantee future network availability.
-
-Protocol references: MeshCentral's `meshctrl.js`, `public/scripts/agent-redir-ws-0.1.1.js` and `public/scripts/agent-desktop-0.0.2.js` in https://github.com/Ylianst/MeshCentral.
+Automated checks cover real Windows password acceptance/rejection, persistent deadline/no extension, verified setup staying pending, fresh manual activation proof, offline expiry, active upgrades, bulk ID validation, admin authentication/origin checks, filtered deletion, fresh online identity, and desktop protocol fixtures. A disposable Windows PC must still test the live support server and UltraViewer handover end to end. Builds are unsigned unless trusted signing has been configured.

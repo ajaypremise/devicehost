@@ -80,17 +80,46 @@ try {
   $activation = $assembly.GetType('ProtectionActivation')
   $staticFlags = [Reflection.BindingFlags]'Static,NonPublic'
   $statePath = 'HKLM:\SOFTWARE\WindowsProtect'
-  $previousState = $null; $previousNonce = $null; $hadKey = Test-Path $statePath
+  $ownedValues = @('ActivationState','ActivationNonce','ActivationDeadlineUtc','LastObservedUtc','SupportVerified')
+  $hadKey = Test-Path $statePath
+  $previousValues = @{}
   if ($hadKey) {
     $old = Get-ItemProperty $statePath
-    $previousState = $old.ActivationState; $previousNonce = $old.ActivationNonce
+    foreach ($name in $ownedValues) { if ($null -ne $old.$name) { $previousValues[$name]=$old.$name } }
   }
   try {
-    if ($hadKey) { Remove-ItemProperty $statePath -Name ActivationState,ActivationNonce -ErrorAction SilentlyContinue }
+    if ($hadKey) { Remove-ItemProperty $statePath -Name $ownedValues -ErrorAction SilentlyContinue }
     $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($false))
     Check (-not $activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'New install activated before support verification.'
     $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($true))
     Check (-not $activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'Pending retry was treated as a protected legacy install.'
+    $deadline = $activation.GetMethod('Deadline',$staticFlags).Invoke($null,@())
+    Check (($deadline - [DateTime]::UtcNow).TotalHours -le 4) 'Setup window exceeds four hours.'
+    Check (($deadline - [DateTime]::UtcNow).TotalHours -gt 3.9) 'New setup window is missing.'
+    $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($false))
+    Check ($activation.GetMethod('Deadline',$staticFlags).Invoke($null,@()) -eq $deadline) 'Retry extended the deadline.'
+    $activation.GetMethod('MarkSupportVerified',$staticFlags).Invoke($null,@(('a' * 64)))
+    Check (-not $activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'Support verification immediately blocked remote tools.'
+    Check ($activation.GetMethod('MigrationStatus',$staticFlags).Invoke($null,@()).StartsWith('awaiting_activation:')) 'Verified setup is not waiting for dashboard activation.'
+    $manualDir = Join-Path $env:TEMP ('wp-manual-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory $manualDir | Out-Null
+    try {
+      $requestFile = Join-Path $manualDir 'activation.request'
+      $manualNonce = 'd' * 64
+      $requestCheck = $activation.GetMethod('TryActivateRequest',$staticFlags)
+      [IO.File]::WriteAllText($requestFile,$manualNonce)
+      Check (-not $requestCheck.Invoke($null,@([string]$requestFile))) 'Manual request without round-trip proof activated protection.'
+      [IO.File]::WriteAllText((Join-Path $manualDir ('support-' + $manualNonce + '.txt')),('e' * 64))
+      Check (-not $requestCheck.Invoke($null,@([string]$requestFile))) 'Manual request with wrong proof activated protection.'
+      [IO.File]::WriteAllText((Join-Path $manualDir ('support-' + $manualNonce + '.txt')),$manualNonce)
+      Check ($requestCheck.Invoke($null,@([string]$requestFile))) 'Verified dashboard request was not accepted.'
+      Check ($activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'Dashboard request did not activate protection.'
+      Check (-not (Test-Path $requestFile)) 'Activation request can be replayed.'
+    } finally { Remove-Item $manualDir -Recurse -Force }
+    Set-ItemProperty $statePath -Name ActivationState -Value 'pending'
+    Set-ItemProperty $statePath -Name ActivationDeadlineUtc -Value ([DateTime]::UtcNow.AddSeconds(-10).ToString('o'))
+    $activation.GetMethod('Evaluate',$staticFlags).Invoke($null,@())
+    Check ($activation.GetMethod('IsActive',$staticFlags).Invoke($null,@())) 'Expired setup did not activate offline.'
     $nonce = 'a' * 64
     $activation.GetMethod('Activate',$staticFlags).Invoke($null,@($nonce))
     $activation.GetMethod('Initialize',$staticFlags).Invoke($null,@($false))
@@ -102,9 +131,8 @@ try {
   } finally {
     if (-not $hadKey) { Remove-Item $statePath -Recurse -Force }
     else {
-      Remove-ItemProperty $statePath -Name ActivationState,ActivationNonce -ErrorAction SilentlyContinue
-      if ($null -ne $previousState) { Set-ItemProperty $statePath -Name ActivationState -Value $previousState }
-      if ($null -ne $previousNonce) { Set-ItemProperty $statePath -Name ActivationNonce -Value $previousNonce }
+      Remove-ItemProperty $statePath -Name $ownedValues -ErrorAction SilentlyContinue
+      foreach ($name in $previousValues.Keys) { Set-ItemProperty $statePath -Name $name -Value $previousValues[$name] }
     }
   }
   $proofDir = Join-Path $env:TEMP ('wp-proof-' + [Guid]::NewGuid().ToString('N'))
@@ -120,7 +148,7 @@ try {
     Check ($proofCheck.Invoke($null,@([string]$goodResponse,[string]$proofDir)) -eq $nonce) 'Fresh round-trip proof was rejected.'
     $noDesktop = $goodResponse.Replace('"desktop_verified":true','"desktop_verified":false')
     Check ($proofCheck.Invoke($null,@([string]$noDesktop,[string]$proofDir)) -eq '') 'A command without desktop verification activated protection.'
-    Write-Output 'Support activation: pending retry remains pending; active repairs preserve protection; fresh desktop and local round-trip proof required.'
+    Write-Output 'Support activation: verified setup waits for dashboard activation; four-hour deadline survives retries; expiry activates offline; active repairs preserve protection.'
   } finally { Remove-Item $proofDir -Recurse -Force }
   (Field 'credentialHint').Text = 'Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.'
   (Field 'credentialHint').ForeColor = [Drawing.Color]::FromArgb(100,108,120)

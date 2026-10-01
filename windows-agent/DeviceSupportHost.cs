@@ -12,7 +12,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.6-test";
+  const string AgentVersion="0.5.7-test";
 
   static readonly string[] BlockedProcessNames = new[]{
     "AnyDesk","TeamViewer","TeamViewer_Service","UltraViewer","UltraViewer_Desktop",
@@ -38,6 +38,7 @@ public sealed class DeviceSupportHost : ServiceBase {
   Timer timer;
   bool protectionActive;
   int ticking;
+  DateTime nextMaintenance=DateTime.MinValue;
 
   public DeviceSupportHost(){
     ServiceName="DeviceSupportHost";
@@ -51,7 +52,7 @@ public sealed class DeviceSupportHost : ServiceBase {
     Log("Service started.");
     protectionActive=ProtectionActivation.IsActive();
     if(protectionActive) ApplySecurityBaseline();
-    timer=new Timer(_=>Tick(),null,3000,30000);
+    timer=new Timer(_=>Tick(),null,1000,1000);
   }
 
   protected override void OnStop(){
@@ -66,12 +67,17 @@ public sealed class DeviceSupportHost : ServiceBase {
   void Tick(){
     if(Interlocked.CompareExchange(ref ticking,1,0)!=0) return;
     try{
+      ProtectionActivation.Evaluate();
+      bool justActivated=false;
       // Pending setup must preserve the current remote-support route. Never
       // disarm a service that has already observed activation.
       if(!protectionActive && ProtectionActivation.IsActive()){
         protectionActive=true;
+        justActivated=true;
         ApplySecurityBaseline();
       }
+      if(!justActivated && DateTime.UtcNow<nextMaintenance) return;
+      nextMaintenance=DateTime.UtcNow.AddSeconds(30);
       if(protectionActive){
         BlockUnauthorizedRemoteTools();
         ProtectionActivation.ConfirmServiceReady();
@@ -408,7 +414,7 @@ public sealed class DeviceSupportHost : ServiceBase {
 
       var json="{\"computer_name\":\""+JsonEscape(Environment.MachineName)+
         "\",\"protection_status\":\""+(active?"protected":"pending")+"\""+
-        ",\"migration_status\":\""+(active?"completed":"verifying_support")+"\""+
+        ",\"migration_status\":\""+(active?"completed":ProtectionActivation.MigrationStatus())+"\""+
         ",\"os_version\":\""+JsonEscape(Environment.OSVersion.VersionString)+
         "\",\"agent_version\":\""+AgentVersion+
         "\",\"defender_enabled\":"+(defender?"true":"false")+

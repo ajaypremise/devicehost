@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SetupCodePanel from "./SetupCodePanel";
+import DeviceTable from "./DeviceTable";
 
 export const dynamic = "force-dynamic";
 
@@ -177,45 +178,7 @@ export default async function Home({ searchParams }) {
           </div>
         ) : (
           <>
-            <div className="deviceTableWrap">
-              <table className="deviceTable">
-                <thead>
-                  <tr>
-                    <th>Owner / device</th>
-                    <th>Computer</th>
-                    <th>Status</th>
-                    <th>Security</th>
-                    <th>Remote</th>
-                    <th>WindowsProtect</th>
-                    <th>Last seen</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageDevices.map((device) => {
-                    const onlineNow = isOnline(device.last_seen_at);
-                    const remoteOn = remoteSupportOn(device);
-                    return (
-                      <tr key={device.id}>
-                        <td>
-                          <Link className="devicePrimary" href={`/device/${device.id}`}>
-                            <strong>{device.person_name || "Unnamed"}</strong>
-                            <span>{device.device_name || "Unnamed device"} · {device.device_code}</span>
-                          </Link>
-                        </td>
-                        <td>{device.computer_name || "Pending"}</td>
-                        <td><span className={onlineNow ? "status online" : "status offline"}>{onlineNow ? "Online" : "Offline"}</span></td>
-                        <td><span className={`tablePosture ${device.security_posture || "unknown"}`}>{postureLabel(device.security_posture)}</span></td>
-                        <td><span className={remoteOn ? "health good" : "health bad"}>{remoteOn ? "On" : "Off"}</span></td>
-                        <td>{device.agent_version || "Pending"}</td>
-                        <td>{timeAgo(device.last_seen_at)}</td>
-                        <td><Link className="openDevice" href={`/device/${device.id}`}>Open</Link></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DeviceTable devices={pageDevices.map(d => ({id:d.id ?? null,person_name:d.person_name ?? null,device_name:d.device_name ?? null,device_code:d.device_code ?? null,computer_name:d.computer_name ?? null,last_seen_at:d.last_seen_at ?? null,security_posture:d.security_posture ?? null,remote_access_provider:d.remote_access_provider ?? null,meshcentral_connected:d.meshcentral_connected ?? null,rustdesk_service_running:d.rustdesk_service_running ?? null,protection_status:d.protection_status ?? null,migration_status:d.migration_status ?? null,agent_version:d.agent_version ?? null}))} />
 
             <div className="tableFooter">
               <span>Showing {filtered.length ? start + 1 : 0}-{Math.min(start + size, filtered.length)} of {filtered.length}</span>
