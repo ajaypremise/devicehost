@@ -63,7 +63,7 @@ internal static class RemoteToolPolicy {
     try{using(var key=Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WindowsProtect")){DateTime until;return key!=null && DateTime.TryParse(Convert.ToString(key.GetValue("UltraViewerAllowedUntilUtc")??""),null,System.Globalization.DateTimeStyles.RoundtripKind,out until) && until.ToUniversalTime()>DateTime.UtcNow;}}catch{return false;}
   }
   internal static void SetUltraViewerAllowance(string value){
-    DateTime until;bool allowed=!String.IsNullOrWhiteSpace(value) && DateTime.TryParse(value,null,System.Globalization.DateTimeStyles.RoundtripKind,out until) && until.ToUniversalTime()>DateTime.UtcNow;
+    DateTime until=DateTime.MinValue;bool allowed=!String.IsNullOrWhiteSpace(value) && DateTime.TryParse(value,null,System.Globalization.DateTimeStyles.RoundtripKind,out until) && until.ToUniversalTime()>DateTime.UtcNow;
     try{using(var key=Registry.LocalMachine.CreateSubKey(@"SOFTWARE\WindowsProtect")){if(allowed)key.SetValue("UltraViewerAllowedUntilUtc",until.ToUniversalTime().ToString("o"));else key.DeleteValue("UltraViewerAllowedUntilUtc",false);}}catch{}
     if(allowed)EnableUltraViewerServices();
   }
