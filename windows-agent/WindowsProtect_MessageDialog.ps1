@@ -17,6 +17,7 @@ function New-WindowsProtectDialog {
  $form.ClientSize=New-Object Drawing.Size($width,$height)
  $footer=New-Object Windows.Forms.Panel
  $footer.Name='DialogFooter';$footer.Dock='Bottom';$footer.Height=62;$footer.BackColor=[Drawing.SystemColors]::Control
+ $footer.Size=New-Object Drawing.Size($width,62)
  $ok=New-Object Windows.Forms.Button
  $ok.Name='DialogOK';$ok.Text='OK';$ok.Size=New-Object Drawing.Size(90,30)
  $ok.Location=New-Object Drawing.Point(($width-110),16);$ok.Anchor='Right,Bottom'
