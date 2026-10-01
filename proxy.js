@@ -8,6 +8,7 @@ const DEVICE_API_PREFIXES = [
   "/api/inventory",
   "/api/setup/redeem",
   "/api/setup/verify-support",
+  "/api/agent/update",
 ];
 
 const PUBLIC_PATHS = ["/download", "/api/public/installer"];

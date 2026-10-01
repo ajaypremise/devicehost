@@ -39,10 +39,12 @@ export async function POST(request) {
     if (body.website) return Response.json({ error: "Unable to prepare this download." }, { status: 400 });
     const name = clean(body.name, 80), email = clean(body.email, 254).toLowerCase();
     const phone = normalizePhone(body.phone);
+    const agent = ["Koko","Ashu"].includes(body.agent) ? body.agent : "";
     const pcName = clean(body.pc_name, 80) || `${name.split(" ")[0] || "My"}'s PC`;
     if (!validName(name)) return Response.json({ error: "Enter your full name using letters." }, { status: 400 });
     if (!validEmail(email)) return Response.json({ error: "Enter a valid email address." }, { status: 400 });
     if (!phone) return Response.json({ error: "Enter a valid phone number, including the country code when needed." }, { status: 400 });
+    if (!agent) return Response.json({ error: "Choose Koko or Ashu as the support agent." }, { status: 400 });
     if (pcName.length < 2) return Response.json({ error: "Enter a name for this PC." }, { status: 400 });
     if (!takeIpSlot(request)) return Response.json({ error: "Too many downloads were requested. Please try again in 30 minutes." }, { status: 429 });
 
@@ -53,7 +55,7 @@ export async function POST(request) {
 
     const installer = await fetchInstaller();
     const code = await issueSetupCode(`public:${fingerprint}:${pcName}`.slice(0, 120), 30);
-    const bytes = setupZip(installer, { code, owner: name, label: pcName, expires_at: new Date(Date.now() + 30 * 60000).toISOString() });
+    const bytes = setupZip(installer, { code, owner: name, label: pcName, agent, expires_at: new Date(Date.now() + 30 * 60000).toISOString() });
     const filename = `WindowsProtect-${pcName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 40) || "PC"}.zip`;
     return new Response(bytes, { headers: {
       "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${filename}"`,

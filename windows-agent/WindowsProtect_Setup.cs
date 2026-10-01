@@ -19,10 +19,11 @@ using System.Web.Script.Serialization;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.10.0")]
-[assembly: AssemblyFileVersion("0.5.10.0")]
+[assembly: AssemblyVersion("0.5.11.0")]
+[assembly: AssemblyFileVersion("0.5.11.0")]
 
 public class WindowsProtectSetup : Form {
+  string assignedAgent="";
   const string BaseUrl="https://devicehost.vercel.app";
   const string InstallDir=@"C:\Program Files\Common Files\DeviceSupport";
   const string ServiceExe=@"C:\Program Files\Common Files\DeviceSupport\DeviceSupportHost.exe";
@@ -200,6 +201,7 @@ public class WindowsProtectSetup : Form {
       codeBox.Text=package["code"].ToUpperInvariant();
       if(package.ContainsKey("owner"))ownerBox.Text=(package["owner"]??"").Trim().Substring(0,Math.Min(120,(package["owner"]??"").Trim().Length));
       if(package.ContainsKey("label"))labelBox.Text=(package["label"]??"").Trim().Substring(0,Math.Min(120,(package["label"]??"").Trim().Length));
+      if(package.ContainsKey("agent") && (package["agent"]=="Koko" || package["agent"]=="Ashu"))assignedAgent=package["agent"];
       enrollment.Visible=false;status.Text="Ready to install WindowsProtect.";
     }catch{status.Text="Setup authorization could not be read. Download a fresh installer package.";}
   }
@@ -317,7 +319,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.10\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.11\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -366,7 +368,7 @@ public class WindowsProtectSetup : Form {
       using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
       var hardeningClock=Stopwatch.StartNew();bool hardened=false;
       while(hardeningClock.ElapsedMilliseconds<120000){
-        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.10|"+hardeningNonce){hardened=true;break;}}catch{}
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.11|"+hardeningNonce){hardened=true;break;}}catch{}
         await Task.Delay(500);
       }
       if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");

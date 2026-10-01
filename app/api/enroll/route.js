@@ -26,6 +26,7 @@ export async function POST(request) {
     const body = await request.json();
     const personName = String(body.person_name || "").trim();
     const deviceName = String(body.device_name || "").trim();
+    const assignedAgent = ["Koko", "Ashu"].includes(body.assigned_agent) ? body.assigned_agent : null;
 
     if (!personName || !deviceName) {
       return Response.json({ error: "person_name and device_name are required" }, { status: 400 });
@@ -64,6 +65,16 @@ export async function POST(request) {
     }
 
     const [device] = await response.json();
+    if (assignedAgent) {
+      try {
+        await fetch(sbUrl("security_events"), {
+          method: "POST",
+          headers: sbHeaders("return=minimal"),
+          body: JSON.stringify({device_id:device.id,event_type:"agent_assignment",severity:"info",title:"Support agent assigned",details:{agent:assignedAgent}}),
+          cache: "no-store"
+        });
+      } catch {}
+    }
     return Response.json({
       ok: true,
       device_id: device.id,

@@ -5,6 +5,7 @@ import { useState } from "react";
 export default function SetupCodePanel() {
   const [label,setLabel]=useState("");
   const [owner,setOwner]=useState("");
+  const [agent,setAgent]=useState("");
   const [code,setCode]=useState("");
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
@@ -31,7 +32,7 @@ export default function SetupCodePanel() {
   async function download(){
     setBusy(true);setError("");
     try{
-      const response=await fetch('/api/admin/installer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({owner,label})});
+      const response=await fetch('/api/admin/installer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({owner,label,agent})});
       if(!response.ok){const data=await response.json();throw new Error(data.error || 'Unable to download installer');}
       const blob=await response.blob();const url=URL.createObjectURL(blob);
       const link=document.createElement('a');link.href=url;link.download='WindowsProtect_Setup.zip';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
@@ -50,13 +51,14 @@ export default function SetupCodePanel() {
           <strong>Download WindowsProtect</strong>
           <p><a href="/download" target="_blank" rel="noreferrer">Open the public download page</a> — customers can enter their own details and download without dashboard access.</p>
           <p>For a new PC, enter its owner and label. The download includes a one-time setup code automatically. Extract both files into the same folder and run WindowsProtect_Setup.exe within 30 minutes.</p>
-          <p><a href="https://github.com/ajaypremise/devicehost/releases/download/v0.5.10/WindowsProtect_Setup.exe">Download installer for an existing PC</a> — no new setup code needed for an update.</p>
+          <p><a href="https://github.com/ajaypremise/devicehost/releases/download/v0.5.11/WindowsProtect_Setup.exe">Download installer for an existing PC</a> — install this update once; later agent updates are automatic.</p>
           <p>The installer is currently unsigned; Windows may show a publisher warning.</p>
         </div>
         <form onSubmit={createCode}>
           <input aria-label="Owner or family member" value={owner} onChange={(e)=>setOwner(e.target.value)} placeholder="Owner / family member" maxLength={120} />
           <input aria-label="Device label" value={label} onChange={(e)=>setLabel(e.target.value)} placeholder="Device label, e.g. Mum laptop" maxLength={120} />
-          <button type="button" disabled={busy || !owner.trim() || !label.trim()} onClick={download}>{busy?"Preparing…":"Download for new PC"}</button>
+          <select aria-label="Support agent" value={agent} onChange={(e)=>setAgent(e.target.value)}><option value="">Choose agent</option><option value="Koko">Koko</option><option value="Ashu">Ashu</option></select>
+          <button type="button" disabled={busy || !owner.trim() || !label.trim() || !agent} onClick={download}>{busy?"Preparing…":"Download for new PC"}</button>
           <button type="submit" disabled={busy}>{busy?"Creating...":"Create 30-min code"}</button>
         </form>
         {code ? <div className="setupCode"><code>{code}</code><button type="button" onClick={copy}>Copy</button></div> : null}

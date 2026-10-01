@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import DeviceNameEditor from "./DeviceNameEditor";
 import RemoteActions from "./RemoteActions";
+import UltraViewerControl from "./UltraViewerControl";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,7 @@ export default async function DevicePage({ params }) {
       </section>
 
       <RemoteActions deviceId={device.id} nodeId={device.meshcentral_node_id || ""} connected={remoteOn} />
+      <UltraViewerControl deviceId={device.id} allowedUntil={device.temporary_support_expires_at || null} />
 
       <section className="detailGrid">
         <DetailBlock title="Security health">
@@ -107,7 +109,7 @@ export default async function DevicePage({ params }) {
           <Row label="Connection">{remoteOn ? "Connected" : "Off"}</Row>
           <Row label="MeshCentral node">{device.meshcentral_node_id || "Pending"}</Row>
           <Row label="MeshCentral agent">{device.meshcentral_agent_version || "Pending"}</Row>
-          <Row label="Temporary support">{device.temporary_support_expires_at ? `Until ${new Date(device.temporary_support_expires_at).toLocaleString()}` : "Off"}</Row>
+          <Row label="UltraViewer exception">{device.temporary_support_expires_at && Date.parse(device.temporary_support_expires_at)>Date.now() ? `Until ${new Date(device.temporary_support_expires_at).toLocaleString()}` : "Off"}</Row>
         </DetailBlock>
 
         <DetailBlock title="Device identity">

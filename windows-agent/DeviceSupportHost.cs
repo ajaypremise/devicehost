@@ -13,7 +13,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.10";
+  const string AgentVersion="0.5.11";
 
   static readonly string[] RemoteToolDisplayNames = new[]{
     "AnyDesk","TeamViewer","UltraViewer","RustDesk","Supremo","AeroAdmin","DWAgent",
@@ -428,7 +428,6 @@ public sealed class DeviceSupportHost : ServiceBase {
         "\",\"defender_enabled\":"+(defender?"true":"false")+
         ",\"firewall_enabled\":"+(firewall?"true":"false")+
         ",\"smartscreen_enabled\":"+(smartOn?"true":"false")+
-        ",\"temporary_support_enabled\":false"+
         ",\"uptime_seconds\":"+((long)(uint)Environment.TickCount/1000)+
         ",\"installed_apps_count\":"+InstalledCount()+
         ",\"remote_tools_detected\":"+arr+
@@ -442,13 +441,24 @@ public sealed class DeviceSupportHost : ServiceBase {
         wc.Headers[HttpRequestHeader.ContentType]="application/json";
         wc.Headers.Add("x-device-token",token);
         var response=wc.UploadString(BaseUrl+"/api/heartbeat","POST",json);
+        ApplyServerControls(response);
         var removalId=RemovalCoordinator.RequestId(response);
         if(!removalLaunched && !String.IsNullOrWhiteSpace(removalId)) removalLaunched=RemovalCoordinator.Start(removalId);
+        AutomaticUpdater.Check(token,AgentVersion);
       }
       Log("Heartbeat success. MeshCentral="+meshRunning+" version="+meshVersion);
     }catch(Exception ex){
       Log("Heartbeat failed: "+ex.GetType().Name+" - "+ex.Message);
     }
+  }
+
+  static void ApplyServerControls(string response){
+    try{
+      const string marker="\"ultraviewer_allowed_until\":";var index=(response??"").IndexOf(marker,StringComparison.OrdinalIgnoreCase);if(index<0)return;index+=marker.Length;
+      while(index<response.Length && Char.IsWhiteSpace(response[index]))index++;
+      if(index>=response.Length || response.Substring(index).StartsWith("null",StringComparison.OrdinalIgnoreCase)){RemoteToolPolicy.SetUltraViewerAllowance(null);return;}
+      if(response[index]!='\"')return;var end=response.IndexOf('\"',index+1);if(end>index)RemoteToolPolicy.SetUltraViewerAllowance(response.Substring(index+1,end-index-1));
+    }catch{}
   }
 
   public static void Main(){

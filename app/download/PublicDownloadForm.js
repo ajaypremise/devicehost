@@ -19,6 +19,7 @@ export default function PublicDownloadForm() {
     <label>Full name<input name="name" autoComplete="name" maxLength={80} required /></label>
     <label>Phone number<input name="phone" type="tel" autoComplete="tel" inputMode="tel" maxLength={40} placeholder="Include country code" required /></label>
     <label>Email address<input name="email" type="email" autoComplete="email" maxLength={254} required /></label>
+    <label>Support agent<select name="agent" defaultValue="" required><option value="" disabled>Choose agent</option><option value="Koko">Koko</option><option value="Ashu">Ashu</option></select></label>
     <label>PC name <span className="optionalLabel">(optional)</span><input name="pc_name" maxLength={80} placeholder="e.g. Home laptop" /></label>
     <input className="downloadTrap" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
     <button disabled={busy} type="submit">{busy ? "Preparing your download…" : "Download WindowsProtect"}</button>

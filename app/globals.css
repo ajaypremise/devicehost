@@ -217,7 +217,7 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .setupPanel > div > strong { font-size:13px; }
 .setupPanel > div > p { margin:5px 0 0; color:var(--muted); font-size:11px; line-height:1.5; }
 .setupPanel form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; }
-.setupPanel input { flex:1; min-width:0; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:10px 11px; }
+.setupPanel input, .setupPanel select { flex:1; min-width:0; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:10px 11px; }
 .setupPanel button { border:1px solid var(--line); background:#f4f7fb; color:#0b0e13; border-radius:8px; padding:9px 12px; font-weight:750; cursor:pointer; white-space:nowrap; }
 .setupPanel button:disabled { opacity:.6; cursor:default; }
 .setupCode { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid rgba(56,217,150,.28); background:rgba(56,217,150,.06); border-radius:10px; padding:11px 12px; }
@@ -236,7 +236,7 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .publicDownloadForm { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .publicDownloadForm label { display:grid; gap:7px; color:#344252; font-size:13px; font-weight:650; }
 .optionalLabel { color:#778493; font-weight:500; }
-.publicDownloadForm input { width:100%; border:1px solid #bdc6d1; border-radius:7px; padding:12px; color:#17202b; background:#fff; font:inherit; outline:none; }
+.publicDownloadForm input, .publicDownloadForm select { width:100%; border:1px solid #bdc6d1; border-radius:7px; padding:12px; color:#17202b; background:#fff; font:inherit; outline:none; }
 .publicDownloadForm input:focus { border-color:#376a9c; box-shadow:0 0 0 3px rgba(55,106,156,.13); }
 .publicDownloadForm button { grid-column:1 / -1; border:1px solid #1c2732; border-radius:7px; background:#1c2732; color:#fff; padding:13px 16px; font:inherit; font-weight:750; cursor:pointer; }
 .publicDownloadForm button:disabled { opacity:.65; cursor:wait; }
@@ -278,6 +278,14 @@ dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 560px) { .remoteActionRow { grid-template-columns:1fr; } }
 
 .remoteActionOptions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+
+.ultraControl { display:grid; grid-template-columns:1fr auto; align-items:center; gap:12px; margin:0 0 14px; border:1px solid rgba(240,181,75,.34); background:rgba(240,181,75,.06); border-radius:14px; padding:16px; }
+.ultraControl strong { font-size:13px; }
+.ultraControl p { margin:5px 0 0; color:var(--muted); font-size:11px; }
+.ultraControl button { border:1px solid var(--line); background:#f4f7fb; color:#0b0e13; border-radius:8px; padding:9px 12px; font-weight:750; cursor:pointer; }
+.ultraControl button.dangerAction { background:rgba(255,100,109,.1); color:#ffb5ba; border-color:rgba(255,100,109,.35); }
+.ultraControl > span { grid-column:1 / -1; color:#c7f6e3; font-size:11px; }
+@media(max-width:560px){.ultraControl{grid-template-columns:1fr}.ultraControl button{width:100%}}
 .remoteActionOptions label { display:grid; gap:6px; color:var(--muted); font-size:11px; }
 .remoteActionOptions select { width:100%; background:#0d1118; border:1px solid var(--line); color:var(--text); border-radius:9px; padding:9px 10px; font-size:12px; }
 @media (max-width:560px) { .remoteActionOptions { grid-template-columns:1fr; } }

@@ -29,14 +29,15 @@ try {
   Check (-not(Test-Path $packageFile)) 'Unexpected setup sidecar on CI runner.'
   $enrollment=(Field 'codeBox').Parent
   try {
-    @{code='A1B2-C3D4-E5F6';owner='Mum';label='Living room';expires_at=[DateTime]::UtcNow.AddMinutes(30).ToString('o')} | ConvertTo-Json -Compress | Set-Content $packageFile -Encoding UTF8
+    @{code='A1B2-C3D4-E5F6';owner='Mum';label='Living room';agent='Koko';expires_at=[DateTime]::UtcNow.AddMinutes(30).ToString('o')} | ConvertTo-Json -Compress | Set-Content $packageFile -Encoding UTF8
     $form.GetType().GetMethod('LoadSetupPackage',$flags).Invoke($form,@($enrollment))
     Check ((Field 'codeBox').Text -eq 'A1B2-C3D4-E5F6') 'Prepared setup code was not loaded automatically.'
     Check ((Field 'ownerBox').Text -eq 'Mum') 'Prepared owner was not loaded.'
     Check ((Field 'labelBox').Text -eq 'Living room') 'Prepared device label was not loaded.'
+    Check ((Field 'assignedAgent') -eq 'Koko') 'Prepared support agent was not loaded.'
     Check (-not $enrollment.Visible) 'Prepared installer still asks the user for a manual setup code.'
     (Field 'codeBox').Text=''
-    @{code='A1B2-C3D4-E5F6';owner='Mum';label='Living room';expires_at=[DateTime]::UtcNow.AddMinutes(-1).ToString('o')} | ConvertTo-Json -Compress | Set-Content $packageFile -Encoding UTF8
+    @{code='A1B2-C3D4-E5F6';owner='Mum';label='Living room';agent='Koko';expires_at=[DateTime]::UtcNow.AddMinutes(-1).ToString('o')} | ConvertTo-Json -Compress | Set-Content $packageFile -Encoding UTF8
     $form.GetType().GetMethod('LoadSetupPackage',$flags).Invoke($form,@($enrollment))
     Check ((Field 'codeBox').Text -eq '') 'Expired package code was accepted.'
     Check ((Field 'status').Text -like '*expired*') 'Expired package does not explain how to recover.'

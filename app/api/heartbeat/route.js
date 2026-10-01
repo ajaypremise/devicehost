@@ -23,7 +23,7 @@ function url(path) {
 async function getDevice(token) {
   const tokenHash = hashToken(token);
   const response = await fetch(
-    url(`devices?agent_token_hash=eq.${encodeURIComponent(tokenHash)}&select=id,migration_status&limit=1`),
+    url(`devices?agent_token_hash=eq.${encodeURIComponent(tokenHash)}&select=id,migration_status,temporary_support_enabled,temporary_support_expires_at&limit=1`),
     { headers: headers(), cache: "no-store" }
   );
   if (!response.ok) throw new Error(await response.text());
@@ -48,10 +48,10 @@ export async function POST(request) {
       "computer_name","rustdesk_id","rustdesk_running","protection_status",
       "migration_status","os_version","agent_version",
       "defender_enabled","firewall_enabled","smartscreen_enabled",
-      "rustdesk_version","rustdesk_service_running","temporary_support_enabled",
+      "rustdesk_version","rustdesk_service_running",
       "uptime_seconds","installed_apps_count","remote_tools_detected","security_posture",
       "remote_access_provider","meshcentral_node_id","meshcentral_connected",
-      "meshcentral_agent_version","temporary_support_expires_at"
+      "meshcentral_agent_version"
     ]) {
       if (body[field] !== undefined) patch[field] = body[field];
     }
@@ -61,13 +61,15 @@ export async function POST(request) {
     for(let attempt=0;attempt<3;attempt++){
       const nonce=removalId(device.migration_status);
       const nextPatch={...patch};
+      const allowedUntil=device.temporary_support_enabled && Date.parse(device.temporary_support_expires_at)>Date.now()?device.temporary_support_expires_at:null;
+      if(device.temporary_support_enabled && !allowedUntil){nextPatch.temporary_support_enabled=false;nextPatch.temporary_support_expires_at=null;}
       if(nonce) delete nextPatch.migration_status;
       const previous=device.migration_status==null?"is.null":`eq.${encodeURIComponent(device.migration_status)}`;
       const response=await fetch(url(`devices?id=eq.${device.id}&migration_status=${previous}`),{
         method:"PATCH",headers:headers(),body:JSON.stringify(nextPatch),cache:"no-store",signal:AbortSignal.timeout(4000)
       });
       if(!response.ok) throw new Error("Heartbeat update failed");
-      if((await response.json()).length) return Response.json({ok:true,server_time:new Date().toISOString(),...(nonce?{removal_request:nonce}:{})});
+      if((await response.json()).length) return Response.json({ok:true,server_time:new Date().toISOString(),ultraviewer_allowed_until:allowedUntil,...(nonce?{removal_request:nonce}:{})});
       device=await getDevice(token);
       if(!device) return Response.json({error:"Unauthorized"},{status:401});
     }

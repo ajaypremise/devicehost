@@ -9,7 +9,7 @@ const auth='Basic '+Buffer.from('test:secret').toString('base64');
 const exe=Buffer.alloc(2048,0);exe.write('MZ');
 function files(zip){const result={};let offset=0;while(zip.readUInt32LE(offset)===0x04034b50){const size=zip.readUInt32LE(offset+18),length=zip.readUInt16LE(offset+26),name=zip.subarray(offset+30,offset+30+length).toString();result[name]=zip.subarray(offset+30+length,offset+30+length+size);offset+=30+length+size;}assert.equal(zip.readUInt32LE(offset),0x02014b50);assert.equal(zip.readUInt32LE(zip.length-22),0x06054b50);assert.equal(zip.readUInt16LE(zip.length-12),2);return result;}
 async function mocked(mock,fn){const original=global.fetch;global.fetch=mock;try{await fn();}finally{global.fetch=original;}}
-const request=(headers={authorization:auth})=>new Request('https://dashboard.test/api/admin/installer',{method:'POST',headers,body:JSON.stringify({owner:'Mum',label:'Laptop'})});
+const request=(headers={authorization:auth})=>new Request('https://dashboard.test/api/admin/installer',{method:'POST',headers,body:JSON.stringify({owner:'Mum',label:'Laptop',agent:'Koko'})});
 test('prepared ZIP preserves installer bytes and contains only short-lived setup configuration',()=>{
  const config={owner:'Mum',label:'Laptop',code:'AAAA-BBBB-CCCC',expires_at:'future'};
  const zip=setupZip(exe,config),result=files(zip);
@@ -26,16 +26,16 @@ test('prepared download verifies release hash and creates a fresh one-time code 
  await mocked(async(url,options)=>{
   calls.push({url,options});
   if(url===installerUrl)return new Response(exe);
-  if(url.endsWith('installer-sha256.json'))return Response.json({version:'0.5.10',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
+  if(url.endsWith('installer-sha256.json'))return Response.json({version:'0.5.11',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
   assert.equal(url,'https://db.test/rest/v1/setup_codes');assert.equal(options.method,'POST');const body=JSON.parse(options.body);assert.match(body.code_hash,/^[a-f0-9]{64}$/);assert.equal(body.label,'Laptop');return new Response(null,{status:201});
  },async()=>{
   const result=await POST(request());assert.equal(result.status,200);assert.match(result.headers.get('cache-control'),/no-store/);
-  const zip=Buffer.from(await result.arrayBuffer());const config=JSON.parse(files(zip)['WindowsProtect_Setup.json']);assert.match(config.code,/^[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);assert.equal(config.owner,'Mum');assert.equal(config.label,'Laptop');assert.ok(Date.parse(config.expires_at)>Date.now());assert.equal(zip.includes(Buffer.from('server-secret')),false);assert.equal(calls.length,3);
+  const zip=Buffer.from(await result.arrayBuffer());const config=JSON.parse(files(zip)['WindowsProtect_Setup.json']);assert.match(config.code,/^[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);assert.equal(config.owner,'Mum');assert.equal(config.label,'Laptop');assert.equal(config.agent,'Koko');assert.ok(Date.parse(config.expires_at)>Date.now());assert.equal(zip.includes(Buffer.from('server-secret')),false);assert.equal(calls.length,3);
  });
 });
 test('checksum mismatch prevents issuing a setup code',async()=>{
  let calls=0;
- await mocked(async url=>{calls++;if(url===installerUrl)return new Response(exe);assert.ok(url.endsWith('installer-sha256.json'));return Response.json({version:'0.5.10',sha256:'0'.repeat(64)});},async()=>{
+ await mocked(async url=>{calls++;if(url===installerUrl)return new Response(exe);assert.ok(url.endsWith('installer-sha256.json'));return Response.json({version:'0.5.11',sha256:'0'.repeat(64)});},async()=>{
   const result=await POST(request());assert.equal(result.status,503);assert.match((await result.json()).error,/verification failed/);assert.equal(calls,2);
  });
 });
@@ -53,14 +53,14 @@ test('public page creates a private one-time package without putting phone or em
   calls.push({url:String(url),options});
   if(String(url).includes('setup_codes?'))return Response.json([]);
   if(url===installerUrl)return new Response(exe);
-  if(String(url).endsWith('installer-sha256.json'))return Response.json({version:'0.5.10',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
+  if(String(url).endsWith('installer-sha256.json'))return Response.json({version:'0.5.11',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
   assert.equal(url,'https://db.test/rest/v1/setup_codes');return new Response(null,{status:201});
  },async()=>{
-  const body={name:'Meera Singh',phone:'+91 98765 43210',email:'Meera@Example.com',pc_name:''};
+  const body={name:'Meera Singh',phone:'+91 98765 43210',email:'Meera@Example.com',agent:'Ashu',pc_name:''};
   const request=new Request('https://dashboard.test/api/public/installer',{method:'POST',headers:{origin:'https://dashboard.test','content-type':'application/json','x-forwarded-for':'192.0.2.21'},body:JSON.stringify(body)});
   const response=await publicDownload(request);assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/WindowsProtect-Meera-s-PC\.zip/);
   const zip=Buffer.from(await response.arrayBuffer()),config=JSON.parse(files(zip)['WindowsProtect_Setup.json']);
-  assert.equal(config.owner,'Meera Singh');assert.equal(config.label,"Meera's PC");assert.match(config.code,/^[A-F0-9-]{14}$/);
+  assert.equal(config.owner,'Meera Singh');assert.equal(config.label,"Meera's PC");assert.equal(config.agent,'Ashu');assert.match(config.code,/^[A-F0-9-]{14}$/);
   assert.equal(zip.includes(Buffer.from('9876543210')),false);assert.equal(zip.includes(Buffer.from('meera@example.com')),false);
   const insert=JSON.parse(calls.find(call=>call.options?.method==='POST').options.body);assert.match(insert.label,/^public:[a-f0-9]{24}:Meera's PC$/);assert.equal(calls.length,4);
  });
