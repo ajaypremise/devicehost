@@ -184,11 +184,11 @@ internal static class TamperProtection {
       }
     }
     SetService("DeviceSupportHost",true);SetRegistry(@"SYSTEM\CurrentControlSet\Services\DeviceSupportHost",true);SetRegistry(ProductKey,true);SetRegistry(ProductEntry,true);
-    using(var key=Registry.LocalMachine.OpenSubKey(ProductKey))File.WriteAllText(Path.Combine(Data,"tamper.ready"),"0.5.11|"+Convert.ToString(key.GetValue("HardeningNonce")));
+    using(var key=Registry.LocalMachine.OpenSubKey(ProductKey))File.WriteAllText(Path.Combine(Data,"tamper.ready"),"0.5.12|"+Convert.ToString(key.GetValue("HardeningNonce")));
   }
   static void BrandEntry(string path,string title,bool create){
     using(var key=create?Registry.LocalMachine.CreateSubKey(path):Registry.LocalMachine.OpenSubKey(path,true)){
-      if(key==null)return;key.SetValue("DisplayName",title);key.SetValue("Publisher","WindowsProtect");key.SetValue("DisplayVersion","0.5.11");
+      if(key==null)return;key.SetValue("DisplayName",title);key.SetValue("Publisher","WindowsProtect");key.SetValue("DisplayVersion","0.5.12");
       key.SetValue("NoRemove",1,RegistryValueKind.DWord);key.SetValue("NoModify",1,RegistryValueKind.DWord);key.SetValue("NoRepair",1,RegistryValueKind.DWord);
       key.SetValue("SystemComponent",0,RegistryValueKind.DWord);key.SetValue("Comments","Managed protection component. Authorized removal is available through the WindowsProtect dashboard.");key.SetValue("HelpLink","https://devicehost.vercel.app");
     }

@@ -19,8 +19,8 @@ using System.Web.Script.Serialization;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.11.0")]
-[assembly: AssemblyFileVersion("0.5.11.0")]
+[assembly: AssemblyVersion("0.5.12.0")]
+[assembly: AssemblyFileVersion("0.5.12.0")]
 
 public class WindowsProtectSetup : Form {
   string assignedAgent="";
@@ -130,20 +130,23 @@ public class WindowsProtectSetup : Form {
     AddRow(body,TextLabel("A safer PC. Peace of mind.",22,ForeColor,FontStyle.Bold),0,8);
     AddRow(body,TextLabel("Block known scam remote-access tools and keep trusted support available.",10,Color.FromArgb(96,104,115)),0,14);
 
-    var identity=Section("01  /  THIS PC");
+    var identity=Section("THIS PC");
     Configure(ownerBox,"e.g. Mum"); Configure(labelBox,"e.g. Living room laptop");
     AddRow(identity,FieldPair("Owner / family member",ownerBox,"Device label",labelBox),0,0);
     AddRow(body,identity,0,10);
 
-    var enrollment=Section("02  /  ONE-TIME SETUP CODE");
+    var enrollment=Section("ONE-TIME SETUP CODE");
     Configure(codeBox,"XXXX-XXXX-XXXX"); AddRow(enrollment,codeBox,0,6);
     AddRow(enrollment,TextLabel("Needed for a new PC. Updates keep your existing registration.",9,Color.FromArgb(100,108,120)),0,0);
     AddRow(body,enrollment,0,10);
 
-    var credential=Section("03  /  WINDOWS ACCOUNT  ·  REQUIRED");
+    var credential=Section("WINDOWS ACCOUNT  ·  REQUIRED");
     Configure(userBox,"Username"); userBox.Text=Environment.UserDomainName+"\\"+Environment.UserName;
     Configure(passBox,""); passBox.UseSystemPasswordChar=true;
     AddRow(credential,FieldPair("Windows username",userBox,"Windows password",passBox),0,8);
+    var showPassword=new CheckBox{Text="Show password",AutoSize=true,ForeColor=Color.FromArgb(84,94,106),Margin=new Padding(0,0,0,7)};
+    showPassword.CheckedChanged+=(sender,e)=>passBox.UseSystemPasswordChar=!showPassword.Checked;
+    AddRow(credential,showPassword,0,5);
     credentialHint=TextLabel("Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.",9,Color.FromArgb(100,108,120));
     AddRow(credential,credentialHint,0,0);
     AddRow(body,credential,0,0);
@@ -181,7 +184,7 @@ public class WindowsProtectSetup : Form {
         status.Text="This PC is registered. No new setup code needed.";
       }
     }catch{}
-    if(codeBox.Enabled)LoadSetupPackage(enrollment);
+    if(codeBox.Enabled)LoadSetupPackage(identity,enrollment);
     FormClosing+=(sender,e)=>{ if(installing) e.Cancel=true; };
     Shown+=(sender,e)=>{
       var area=Screen.FromControl(this).WorkingArea;
@@ -189,7 +192,7 @@ public class WindowsProtectSetup : Form {
     };
   }
 
-  void LoadSetupPackage(Control enrollment){
+  void LoadSetupPackage(Control identity,Control enrollment){
     var path=Path.Combine(Path.GetDirectoryName(typeof(WindowsProtectSetup).Assembly.Location),"WindowsProtect_Setup.json");
     if(!File.Exists(path))return;
     try{
@@ -202,7 +205,7 @@ public class WindowsProtectSetup : Form {
       if(package.ContainsKey("owner"))ownerBox.Text=(package["owner"]??"").Trim().Substring(0,Math.Min(120,(package["owner"]??"").Trim().Length));
       if(package.ContainsKey("label"))labelBox.Text=(package["label"]??"").Trim().Substring(0,Math.Min(120,(package["label"]??"").Trim().Length));
       if(package.ContainsKey("agent") && (package["agent"]=="Koko" || package["agent"]=="Ashu"))assignedAgent=package["agent"];
-      enrollment.Visible=false;status.Text="Ready to install WindowsProtect.";
+      identity.Visible=false;enrollment.Visible=false;ClientSize=new Size(600,510);status.Text="Details loaded. Enter your Windows password to continue.";
     }catch{status.Text="Setup authorization could not be read. Download a fresh installer package.";}
   }
 
@@ -319,7 +322,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.11\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.12\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -368,7 +371,7 @@ public class WindowsProtectSetup : Form {
       using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
       var hardeningClock=Stopwatch.StartNew();bool hardened=false;
       while(hardeningClock.ElapsedMilliseconds<120000){
-        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.11|"+hardeningNonce){hardened=true;break;}}catch{}
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.12|"+hardeningNonce){hardened=true;break;}}catch{}
         await Task.Delay(500);
       }
       if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");

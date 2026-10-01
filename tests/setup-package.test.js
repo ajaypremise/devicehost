@@ -26,7 +26,7 @@ test('prepared download verifies release hash and creates a fresh one-time code 
  await mocked(async(url,options)=>{
   calls.push({url,options});
   if(url===installerUrl)return new Response(exe);
-  if(url.endsWith('installer-sha256.json'))return Response.json({version:'0.5.11',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
+  if(url.endsWith('installer-sha256.json'))return Response.json({version:'0.5.12',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
   assert.equal(url,'https://db.test/rest/v1/setup_codes');assert.equal(options.method,'POST');const body=JSON.parse(options.body);assert.match(body.code_hash,/^[a-f0-9]{64}$/);assert.equal(body.label,'Laptop');return new Response(null,{status:201});
  },async()=>{
   const result=await POST(request());assert.equal(result.status,200);assert.match(result.headers.get('cache-control'),/no-store/);
@@ -35,7 +35,7 @@ test('prepared download verifies release hash and creates a fresh one-time code 
 });
 test('checksum mismatch prevents issuing a setup code',async()=>{
  let calls=0;
- await mocked(async url=>{calls++;if(url===installerUrl)return new Response(exe);assert.ok(url.endsWith('installer-sha256.json'));return Response.json({version:'0.5.11',sha256:'0'.repeat(64)});},async()=>{
+ await mocked(async url=>{calls++;if(url===installerUrl)return new Response(exe);assert.ok(url.endsWith('installer-sha256.json'));return Response.json({version:'0.5.12',sha256:'0'.repeat(64)});},async()=>{
   const result=await POST(request());assert.equal(result.status,503);assert.match((await result.json()).error,/verification failed/);assert.equal(calls,2);
  });
 });
@@ -53,7 +53,7 @@ test('public page creates a private one-time package without putting phone or em
   calls.push({url:String(url),options});
   if(String(url).includes('setup_codes?'))return Response.json([]);
   if(url===installerUrl)return new Response(exe);
-  if(String(url).endsWith('installer-sha256.json'))return Response.json({version:'0.5.11',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
+  if(String(url).endsWith('installer-sha256.json'))return Response.json({version:'0.5.12',sha256:crypto.createHash('sha256').update(exe).digest('hex')});
   assert.equal(url,'https://db.test/rest/v1/setup_codes');return new Response(null,{status:201});
  },async()=>{
   const body={name:'Meera Singh',phone:'+91 98765 43210',email:'Meera@Example.com',agent:'Ashu',pc_name:''};
