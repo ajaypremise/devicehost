@@ -8,7 +8,7 @@ using System.Windows.Forms;
 
 public sealed class WindowsProtectUserUI : ApplicationContext {
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string CommandFile=@"C:\ProgramData\WindowsProtect\ui-command.txt";
+  const string CommandDir=@"C:\ProgramData\WindowsProtect\UI";
   readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();
 
   public WindowsProtectUserUI(){
@@ -25,17 +25,29 @@ public sealed class WindowsProtectUserUI : ApplicationContext {
 
   void CheckCommand(){
     try{
-      if(!File.Exists(CommandFile)) return;
-      var text=File.ReadAllText(CommandFile,Encoding.UTF8);
-      try{File.Delete(CommandFile);}catch{}
+      Directory.CreateDirectory(CommandDir);
+      foreach(var file in Directory.GetFiles(CommandDir,"command-*.txt")) ProcessCommand(file);
+      // Compatibility with the short-lived 0.5.13 dashboard command filename.
+      var legacy=Path.Combine(CommandDir,"ui-command.txt");
+      if(File.Exists(legacy)) ProcessCommand(legacy);
+    }catch{}
+  }
+
+  void ProcessCommand(string file){
+    try{
+      var text=File.ReadAllText(file,Encoding.UTF8);
+      try{File.Delete(file);}catch{}
       var p=text.Split('|');
       if(p.Length<3) return;
+      var id=p[p.Length-1];
+      if(!System.Text.RegularExpressions.Regex.IsMatch(id??"",@"\A[a-f0-9]{32}\z")) id="";
 
       if(p[0]=="url"){
         var url=Decode(p[1]);
         Uri uri;
         if(Uri.TryCreate(url,UriKind.Absolute,out uri) && (uri.Scheme=="http"||uri.Scheme=="https")){
           Process.Start(new ProcessStartInfo(url){UseShellExecute=true});
+          Acknowledge(id,"opened");
         }
         return;
       }
@@ -46,13 +58,25 @@ public sealed class WindowsProtectUserUI : ApplicationContext {
         var size=(p[3]=="compact"||p[3]=="large")?p[3]:"standard";
         var placement=(p[4]=="top_right"||p[4]=="bottom_right")?p[4]:"center";
         var kind=p.Length>=6&&(p[5]=="information"||p[5]=="error")?p[5]:"warning";
-        ShowMessage(title,message,size,placement,kind);
+        ShowMessage(title,message,size,placement,kind,id);
       }
     }catch{}
   }
 
-  static void ShowMessage(string title,string message,string size,string placement,string kind){
-    using(var form=BuildMessage(title,message,size,placement,kind))form.ShowDialog();
+  static void Acknowledge(string id,string result){
+    if(String.IsNullOrWhiteSpace(id))return;
+    var destination=Path.Combine(CommandDir,"ack-"+id+".txt");
+    var temporary=destination+".tmp";
+    File.WriteAllText(temporary,id+"|"+result,Encoding.ASCII);
+    if(File.Exists(destination))File.Delete(destination);
+    File.Move(temporary,destination);
+  }
+
+  static void ShowMessage(string title,string message,string size,string placement,string kind,string id){
+    using(var form=BuildMessage(title,message,size,placement,kind)){
+      form.Shown+=(sender,e)=>Acknowledge(id,"shown");
+      form.ShowDialog();
+    }
   }
   internal static Form BuildMessage(string title,string message,string size,string placement,string kind){
     int w=540,h=310;

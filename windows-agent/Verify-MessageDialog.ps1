@@ -5,6 +5,9 @@ $assembly=[Reflection.Assembly]::LoadFile((Join-Path $PWD 'WindowsProtect_UserUI
 $type=$assembly.GetType('WindowsProtectUserUI')
 $build=$type.GetMethod('BuildMessage',[Reflection.BindingFlags]'Static,NonPublic')
 function Check($condition,$message){if(-not $condition){throw $message}}
+$commandDir=$type.GetField('CommandDir',[Reflection.BindingFlags]'Static,NonPublic').GetRawConstantValue()
+Check ($commandDir -eq 'C:\ProgramData\WindowsProtect\UI') 'Dashboard commands and the Windows UI do not use the same queue.'
+Check ($null -ne $type.GetMethod('Acknowledge',[Reflection.BindingFlags]'Static,NonPublic')) 'Windows UI cannot acknowledge a delivered action.'
 foreach($size in @('compact','standard','large')){
  $form=$build.Invoke($null,@('WindowsProtect support notice',('Long message content. '*60),$size,'center','warning'))
  try{

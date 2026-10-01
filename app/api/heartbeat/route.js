@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { removalId } from "../../lib/removal.js";
+import { meshcentralConfigured, sendMeshCentral } from "../../lib/meshcentral.js";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ function url(path) {
 async function getDevice(token) {
   const tokenHash = hashToken(token);
   const response = await fetch(
-    url(`devices?agent_token_hash=eq.${encodeURIComponent(tokenHash)}&select=id,migration_status,temporary_support_enabled,temporary_support_expires_at&limit=1`),
+    url(`devices?agent_token_hash=eq.${encodeURIComponent(tokenHash)}&select=id,person_name,meshcentral_node_id,migration_status,temporary_support_enabled,temporary_support_expires_at&limit=1`),
     { headers: headers(), cache: "no-store" }
   );
   if (!response.ok) throw new Error(await response.text());
@@ -69,7 +70,14 @@ export async function POST(request) {
         method:"PATCH",headers:headers(),body:JSON.stringify(nextPatch),cache:"no-store",signal:AbortSignal.timeout(4000)
       });
       if(!response.ok) throw new Error("Heartbeat update failed");
-      if((await response.json()).length) return Response.json({ok:true,server_time:new Date().toISOString(),ultraviewer_allowed_until:allowedUntil,...(nonce?{removal_request:nonce}:{})});
+      if((await response.json()).length) {
+        if(!device.meshcentral_node_id && body.meshcentral_node_id && device.person_name && meshcentralConfigured()){
+          try{
+            await sendMeshCentral({action:"changedevice",nodeid:body.meshcentral_node_id,name:device.person_name,responseid:`enrollment-name-${Date.now()}-${Math.random().toString(16).slice(2)}`},{timeoutMs:10000});
+          }catch{}
+        }
+        return Response.json({ok:true,server_time:new Date().toISOString(),ultraviewer_allowed_until:allowedUntil,...(nonce?{removal_request:nonce}:{})});
+      }
       device=await getDevice(token);
       if(!device) return Response.json({error:"Unauthorized"},{status:401});
     }

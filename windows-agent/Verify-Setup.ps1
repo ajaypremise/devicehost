@@ -17,16 +17,23 @@ try {
   $buttonBounds = $form.RectangleToClient($button.RectangleToScreen($button.ClientRectangle))
   Check ($form.ClientRectangle.Contains($buttonBounds)) 'Primary action is clipped or outside the window.'
   $checks=@($controls | Where-Object { $_ -is [Windows.Forms.CheckBox] })
-  Check ($checks.Count -eq 1 -and $checks[0].Text -eq 'Show password') 'Installer contains an unexpected checkbox.'
-  $checks[0].Checked=$true;Check (-not (Field 'passBox').UseSystemPasswordChar) 'Show password does not reveal the field.';$checks[0].Checked=$false
+  $show=@($checks | Where-Object {$_.Text -eq 'Show password'})[0]
+  $skip=@($checks | Where-Object {$_.Text -eq 'Skip Windows password'})[0]
+  Check ($checks.Count -eq 2 -and $null -ne $show -and $null -ne $skip) 'Installer password choices are missing or duplicated.'
+  $show.Checked=$true;Check (-not (Field 'passBox').UseSystemPasswordChar) 'Show password does not reveal the field.';$show.Checked=$false
+  $skip.Checked=$true
+  Check (-not (Field 'userBox').Enabled -and -not (Field 'passBox').Enabled) 'Skip password did not disable credential fields.'
+  Check ((Field 'credentialHint').Text -like '*skipped*') 'Skip password is not explained.'
+  $skip.Checked=$false
+  Check ((Field 'userBox').Enabled -and (Field 'passBox').Enabled) 'Credential fields did not return after unchecking Skip.'
+  Check (-not [bool]($controls | Where-Object { $_.Text -match 'Block known scam remote-access tools' })) 'Removed installer marketing line is still visible.'
   Check (-not [bool]($controls | Where-Object { $_.Text -match 'MeshCentral|MeshControl' })) 'Internal provider name visible.'
   Check (-not [bool]($controls | Where-Object { $_.Text -match 'TEST BUILD|admin approval|dashboard activation' })) 'Internal build/approval wording visible.'
   Check ((Field 'ownerBox').Text -eq '') 'Owner placeholder submitted as text.'
   Check ((Field 'labelBox').Text -eq '') 'Device placeholder submitted as text.'
   Check ((Field 'codeBox').Text -eq '') 'Setup code placeholder submitted as text.'
   Check ((Field 'passBox').UseSystemPasswordChar) 'Password is not masked.'
-  # A dashboard-prepared sidecar fills setup authorization automatically without
-  # modifying installer bytes or weakening Windows password verification.
+  # A dashboard-prepared sidecar fills setup authorization automatically.
   $packageFile=Join-Path $PWD 'WindowsProtect_Setup.json'
   Check (-not(Test-Path $packageFile)) 'Unexpected setup sidecar on CI runner.'
   $enrollment=(Field 'codeBox').Parent;$identity=(Field 'ownerBox').Parent.Parent
@@ -177,7 +184,7 @@ try {
     Check ($proofCheck.Invoke($null,@([string]$noDesktop,[string]$proofDir)) -eq '') 'A command without desktop verification activated protection.'
     Write-Output 'Support activation: verified setup waits for dashboard activation; four-hour deadline survives retries; expiry activates offline; active repairs preserve protection.'
   } finally { Remove-Item $proofDir -Recurse -Force }
-  (Field 'credentialHint').Text = 'Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.'
+  (Field 'credentialHint').Text = 'Optional: Windows verifies the password on this PC, then WindowsProtect immediately forgets it. Use your password, not your PIN.'
   (Field 'credentialHint').ForeColor = [Drawing.Color]::FromArgb(100,108,120)
   (Field 'userBox').Text = [Environment]::UserDomainName + '\' + [Environment]::UserName
   (Field 'passBox').Text = ''
@@ -186,5 +193,5 @@ try {
   $form.PerformLayout(); [Windows.Forms.Application]::DoEvents()
   $image = New-Object Drawing.Bitmap $form.Width,$form.Height
   try { $form.DrawToBitmap($image,(New-Object Drawing.Rectangle 0,0,$form.Width,$form.Height)); $image.Save((Join-Path $PWD 'WindowsProtect_Setup_Preview.png')) } finally { $image.Dispose() }
-  Write-Output 'Installer UI and required-credential checks passed.'
+  Write-Output 'Installer UI and optional-password checks passed.'
 } finally { $form.Close(); $form.Dispose() }

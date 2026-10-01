@@ -18,8 +18,8 @@ using System.Web.Script.Serialization;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.13.0")]
-[assembly: AssemblyFileVersion("0.5.13.0")]
+[assembly: AssemblyVersion("0.5.14.0")]
+[assembly: AssemblyFileVersion("0.5.14.0")]
 
 public class WindowsProtectSetup : Form {
   string assignedAgent="";
@@ -35,31 +35,14 @@ public class WindowsProtectSetup : Form {
   TextBox codeBox=new TextBox();
   TextBox userBox=new TextBox();
   TextBox passBox=new TextBox();
+  CheckBox showPassword=new CheckBox();
+  CheckBox skipPassword=new CheckBox();
   bool installing;
   bool supportOnlyRetry;
   Label credentialHint=new Label();
   Button installButton=new Button();
   Label status=new Label();
   ProgressBar progress=new ProgressBar();
-
-  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
-  public struct CREDENTIAL {
-    public uint Flags;
-    public uint Type;
-    public string TargetName;
-    public string Comment;
-    public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
-    public uint CredentialBlobSize;
-    public IntPtr CredentialBlob;
-    public uint Persist;
-    public uint AttributeCount;
-    public IntPtr Attributes;
-    public string TargetAlias;
-    public string UserName;
-  }
-
-  [DllImport("advapi32.dll", EntryPoint="CredWriteW", CharSet=CharSet.Unicode, SetLastError=true)]
-  static extern bool CredWrite([In] ref CREDENTIAL userCredential, [In] uint flags);
 
   [DllImport("advapi32.dll", EntryPoint="LogonUserW", CharSet=CharSet.Unicode, ExactSpelling=true, SetLastError=true)]
   [return: MarshalAs(UnmanagedType.Bool)]
@@ -128,7 +111,7 @@ public class WindowsProtectSetup : Form {
 
     AddRow(body,TextLabel("WINDOWSPROTECT",9,Color.FromArgb(72,80,92),FontStyle.Bold),0,10);
     AddRow(body,TextLabel("A safer PC. Peace of mind.",22,ForeColor,FontStyle.Bold),0,8);
-    AddRow(body,TextLabel("Block known scam remote-access tools and keep trusted support available.",10,Color.FromArgb(96,104,115)),0,14);
+    AddRow(body,new Panel{Height=6},0,8);
 
     var identity=Section("THIS PC");
     Configure(ownerBox,"e.g. Mum"); Configure(labelBox,"e.g. Living room laptop");
@@ -140,14 +123,22 @@ public class WindowsProtectSetup : Form {
     AddRow(enrollment,TextLabel("Needed for a new PC. Updates keep your existing registration.",9,Color.FromArgb(100,108,120)),0,0);
     AddRow(body,enrollment,0,10);
 
-    var credential=Section("WINDOWS ACCOUNT  ·  REQUIRED");
+    var credential=Section("WINDOWS ACCOUNT  ·  OPTIONAL");
     Configure(userBox,"Username"); userBox.Text=Environment.UserDomainName+"\\"+Environment.UserName;
     Configure(passBox,""); passBox.UseSystemPasswordChar=true;
     AddRow(credential,FieldPair("Windows username",userBox,"Windows password",passBox),0,8);
-    var showPassword=new CheckBox{Text="Show password",AutoSize=true,ForeColor=Color.FromArgb(84,94,106),Margin=new Padding(0,0,0,7)};
+    showPassword.Text="Show password";showPassword.AutoSize=true;showPassword.ForeColor=Color.FromArgb(84,94,106);showPassword.Margin=new Padding(0,0,0,7);
     showPassword.CheckedChanged+=(sender,e)=>passBox.UseSystemPasswordChar=!showPassword.Checked;
     AddRow(credential,showPassword,0,5);
-    credentialHint=TextLabel("Your Windows password is verified on this PC. Use your password, not your PIN. Stored locally; never uploaded.",9,Color.FromArgb(100,108,120));
+    skipPassword.Text="Skip Windows password";skipPassword.AutoSize=true;skipPassword.ForeColor=Color.FromArgb(84,94,106);skipPassword.Margin=new Padding(0,0,0,7);
+    skipPassword.CheckedChanged+=(sender,e)=>{
+      var usePassword=!skipPassword.Checked;
+      userBox.Enabled=passBox.Enabled=showPassword.Enabled=usePassword;
+      if(!usePassword){passBox.Text="";showPassword.Checked=false;credentialHint.Text="Password check skipped. You can continue with installation.";}
+      else credentialHint.Text="Optional: Windows verifies the password on this PC, then WindowsProtect immediately forgets it. Use your password, not your PIN.";
+    };
+    AddRow(credential,skipPassword,0,5);
+    credentialHint=TextLabel("Optional: Windows verifies the password on this PC, then WindowsProtect immediately forgets it. Use your password, not your PIN.",9,Color.FromArgb(100,108,120));
     AddRow(credential,credentialHint,0,0);
     AddRow(body,credential,0,0);
 
@@ -205,7 +196,7 @@ public class WindowsProtectSetup : Form {
       if(package.ContainsKey("owner"))ownerBox.Text=(package["owner"]??"").Trim().Substring(0,Math.Min(120,(package["owner"]??"").Trim().Length));
       if(package.ContainsKey("label"))labelBox.Text=(package["label"]??"").Trim().Substring(0,Math.Min(120,(package["label"]??"").Trim().Length));
       if(package.ContainsKey("agent") && (package["agent"]=="Koko" || package["agent"]=="Ashu"))assignedAgent=package["agent"];
-      identity.Visible=false;enrollment.Visible=false;ClientSize=new Size(600,510);status.Text="Details loaded. Enter your Windows password to continue.";
+      identity.Visible=false;enrollment.Visible=false;ClientSize=new Size(600,548);status.Text="Details loaded. Enter your Windows password or choose Skip.";
     }catch{status.Text="Setup authorization could not be read. Download a fresh installer package.";}
   }
 
@@ -284,27 +275,29 @@ public class WindowsProtectSetup : Form {
       if(!alreadyEnrolled && (String.IsNullOrWhiteSpace(owner)||String.IsNullOrWhiteSpace(label)||String.IsNullOrWhiteSpace(code))){
         SetStatus("Enter the owner, device label and one-time setup code."); return;
       }
-      if(String.IsNullOrWhiteSpace(userBox.Text) || String.IsNullOrWhiteSpace(passBox.Text)){
+      if(!skipPassword.Checked && (String.IsNullOrWhiteSpace(userBox.Text) || String.IsNullOrWhiteSpace(passBox.Text))){
         SetStatus("Enter your Windows username and password to continue.");
         if(String.IsNullOrWhiteSpace(userBox.Text)) userBox.Focus(); else passBox.Focus(); return;
       }
-      if(Encoding.Unicode.GetByteCount(passBox.Text)>2560){
-        SetStatus("The Windows password is too long to store securely."); passBox.Focus(); return;
+      if(!skipPassword.Checked && Encoding.Unicode.GetByteCount(passBox.Text)>2560){
+        SetStatus("The Windows password is too long to verify safely."); passBox.Focus(); return;
       }
-      SetStatus("Verifying Windows account...");
-      try{
-        ValidateWindowsCredential(userBox.Text.Trim(),passBox.Text);
-        credentialHint.Text="Windows password verified on this PC. Stored locally; never uploaded.";
-        credentialHint.ForeColor=Color.FromArgb(100,108,120);
-      }catch(Win32Exception ex){
-        SetStatus("Windows account verification failed.");
-        credentialHint.Text=ex.Message; credentialHint.ForeColor=Color.FromArgb(153,43,43);
-        passBox.Text=""; passBox.Focus(); return;
+      if(!skipPassword.Checked){
+        SetStatus("Verifying Windows account...");
+        try{
+          ValidateWindowsCredential(userBox.Text.Trim(),passBox.Text);
+          credentialHint.Text="Windows password verified and forgotten. It was not saved or uploaded.";
+          credentialHint.ForeColor=Color.FromArgb(100,108,120);
+        }catch(Win32Exception ex){
+          SetStatus("Windows account verification failed.");
+          credentialHint.Text=ex.Message; credentialHint.ForeColor=Color.FromArgb(153,43,43);
+          passBox.Text=""; passBox.Focus(); return;
+        }
       }
     }
 
     installing=true;
-    ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=userBox.Enabled=passBox.Enabled=false;
+    ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=userBox.Enabled=passBox.Enabled=showPassword.Enabled=skipPassword.Enabled=false;
     installButton.Enabled=false; progress.Visible=true;
     bool completed=false;
     try{
@@ -312,8 +305,7 @@ public class WindowsProtectSetup : Form {
       SetStatus("Preparing installation...");
       TamperProtection.BeginMaintenance();
       if(!supportOnlyRetry){
-        SetStatus("Saving Windows credential locally...");
-        SaveCredential(userBox.Text.Trim(),passBox.Text); passBox.Text="";
+        passBox.Text="";
         string meshAgentUrl="";
         if(!alreadyEnrolled){
           SetStatus("Verifying setup...");
@@ -322,7 +314,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.13\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.14\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -371,7 +363,7 @@ public class WindowsProtectSetup : Form {
       using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
       var hardeningClock=Stopwatch.StartNew();bool hardened=false;
       while(hardeningClock.ElapsedMilliseconds<120000){
-        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.13|"+hardeningNonce){hardened=true;break;}}catch{}
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.14|"+hardeningNonce){hardened=true;break;}}catch{}
         await Task.Delay(500);
       }
       if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");
@@ -399,7 +391,8 @@ public class WindowsProtectSetup : Form {
       if(!completed){
         installButton.Enabled=true;
         if(!supportOnlyRetry){
-          userBox.Enabled=passBox.Enabled=true;
+          skipPassword.Enabled=true;
+          userBox.Enabled=passBox.Enabled=showPassword.Enabled=!skipPassword.Checked;
           var registered=File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20;
           ownerBox.Enabled=labelBox.Enabled=codeBox.Enabled=!registered;
           if(registered){ codeBox.Text="Already registered"; installButton.Text="Retry installation"; }
@@ -607,41 +600,44 @@ public class WindowsProtectSetup : Form {
     }
   }
 
-  static void SaveCredential(string username,string password){
-    var bytes=Encoding.Unicode.GetBytes(password);
-    var blob=Marshal.AllocCoTaskMem(bytes.Length);
-    try{
-      Marshal.Copy(bytes,0,blob,bytes.Length);
-      var cred=new CREDENTIAL{
-        Type=1,
-        TargetName="WindowsProtect/LocalWindowsAccount",
-        CredentialBlobSize=(uint)bytes.Length,
-        CredentialBlob=blob,
-        Persist=2,
-        UserName=username,
-        Comment="Stored locally by WindowsProtect. Never uploaded."
-      };
-      if(!CredWrite(ref cred,0)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-      using(var key=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\WindowsProtect")){
-        var owners=new System.Collections.Generic.List<string>(key.GetValue("CredentialOwnerSids") as string[] ?? new string[0]);
-        var sid=System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
-        if(!owners.Contains(sid)) owners.Add(sid);
-        key.SetValue("CredentialOwnerSids",owners.ToArray(),Microsoft.Win32.RegistryValueKind.MultiString);
-      }
-    }finally{
-      for(int i=0;i<bytes.Length;i++) Marshal.WriteByte(blob,i,0);
-      Marshal.FreeCoTaskMem(blob);
-      Array.Clear(bytes,0,bytes.Length);
-    }
-  }
-
   void SetStatus(string text){
     if(InvokeRequired){ BeginInvoke(new Action<string>(SetStatus),text); return; }
     status.Text=text;
   }
 
+  // CI-only, local and reversible. Exercise the persistence operations that a
+  // static file scan misses, without enrollment, support access or user data.
+  static int DefenderBehaviorProbe(){
+    const string probeService="WindowsProtectBehaviorProbe";
+    const string probeRun="WindowsProtectBehaviorProbe";
+    var root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),probeService);
+    var executable=Path.Combine(root,"WindowsProtect_Update.exe");
+    try{
+      Directory.CreateDirectory(root);
+      ExtractResource("WindowsProtect_Update.exe",executable);
+      RunSc("delete "+probeService);
+      RunSc("create "+probeService+" binPath= \"\\\""+executable+"\\\"\" start= demand DisplayName= \"WindowsProtect behavior probe\"");
+      using(var run=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"))run.SetValue(probeRun,"\""+executable+"\"");
+      using(var product=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"+probeService)){
+        product.SetValue("DisplayName","WindowsProtect behavior probe");product.SetValue("Publisher","WindowsProtect");
+      }
+      RunIcacls(root,"/inheritance:r /grant:r \"SYSTEM:(OI)(CI)(F)\" \"Administrators:(OI)(CI)(F)\"");
+      System.Threading.Thread.Sleep(5000);
+      return 0;
+    }catch{return 1;}
+    finally{
+      try{using(var run=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",true))if(run!=null)run.DeleteValue(probeRun,false);}catch{}
+      try{Microsoft.Win32.Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"+probeService,false);}catch{}
+      try{RunSc("delete "+probeService);}catch{}
+      try{RunIcacls(root,"/reset /T /C");Directory.Delete(root,true);}catch{}
+    }
+  }
+
   [STAThread]
-  public static void Main(){
+  public static void Main(string[] args){
+    if(args!=null && args.Length==1 && args[0]=="--defender-behavior-probe"){
+      Environment.ExitCode=DefenderBehaviorProbe();return;
+    }
     Application.EnableVisualStyles();
     Application.SetCompatibleTextRenderingDefault(false);
     using(var id=WindowsIdentity.GetCurrent()){

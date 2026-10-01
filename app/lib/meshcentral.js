@@ -12,7 +12,7 @@ export function meshcentralConfigured() {
   );
 }
 
-export function sendMeshCentral(command) {
+export function sendMeshCentral(command, { timeoutMs = 7000 } = {}) {
   return new Promise((resolve, reject) => {
     const url = process.env.MESHCENTRAL_WS_URL;
     const user = process.env.MESHCENTRAL_LOGIN_USER;
@@ -39,7 +39,7 @@ export function sendMeshCentral(command) {
       if (err) reject(err); else resolve(value);
     };
 
-    const timer = setTimeout(() => finish(new Error("MeshCentral action timed out.")), 7000);
+    const timer = setTimeout(() => finish(new Error("MeshCentral action timed out.")), timeoutMs);
 
     ws.on("open", () => {
       try {

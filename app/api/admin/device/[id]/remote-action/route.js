@@ -1,7 +1,10 @@
+import crypto from "node:crypto";
 import { adminAuthorized } from "../../../../../lib/device-actions.js";
 import { meshcentralConfigured, sendMeshCentral } from "../../../../../lib/meshcentral.js";
+import { buildDeliveryScript } from "../../../../../lib/remote-command.js";
 
 export const runtime = "nodejs";
+export const maxDuration = 40;
 
 function headers() {
   const key = process.env.SUPABASE_SECRET_KEY;
@@ -38,6 +41,7 @@ export async function POST(request, { params }) {
     const body = await request.json().catch(() => ({}));
     const action = String(body.action || "").toLowerCase();
     const responseid = `devicehost-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const commandId = crypto.randomBytes(16).toString("hex");
 
     if (action === "open_url") {
       let target;
@@ -48,11 +52,9 @@ export async function POST(request, { params }) {
         return Response.json({ error: "Only http:// and https:// websites are allowed" }, { status: 400 });
       }
 
-      const payload = "url|" + Buffer.from(target.toString(), "utf8").toString("base64") + "|x";
+      const payload = "url|" + Buffer.from(target.toString(), "utf8").toString("base64") + "|" + commandId;
       const payload64 = Buffer.from(payload, "utf8").toString("base64");
-      const script = "$d='C:\\ProgramData\\WindowsProtect\\UI'; New-Item -ItemType Directory -Path $d -Force | Out-Null; " +
-        "$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + payload64 + "')); " +
-        "[IO.File]::WriteAllText((Join-Path $d 'ui-command.txt'),$p,[Text.Encoding]::UTF8); 'OK'";
+      const script = buildDeliveryScript(commandId,payload64);
 
       await sendMeshCentral({
         action: "runcommands",
@@ -62,8 +64,8 @@ export async function POST(request, { params }) {
         runAsUser: 0,
         reply: true,
         responseid
-      });
-      return Response.json({ ok: true, message: "Website command delivered to the active Windows helper" });
+      }, { timeoutMs: 30000 });
+      return Response.json({ ok: true, message: "PC confirmed that the website was opened" });
     }
 
     if (action === "message") {
@@ -81,12 +83,10 @@ export async function POST(request, { params }) {
         size,
         placement,
         kind,
-        "x"
+        commandId
       ].join("|");
       const payload64 = Buffer.from(payload, "utf8").toString("base64");
-      const script = "$d='C:\\ProgramData\\WindowsProtect\\UI'; New-Item -ItemType Directory -Path $d -Force | Out-Null; " +
-        "$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + payload64 + "')); " +
-        "[IO.File]::WriteAllText((Join-Path $d 'ui-command.txt'),$p,[Text.Encoding]::UTF8); 'OK'";
+      const script = buildDeliveryScript(commandId,payload64);
 
       await sendMeshCentral({
         action: "runcommands",
@@ -96,8 +96,8 @@ export async function POST(request, { params }) {
         runAsUser: 0,
         reply: true,
         responseid
-      });
-      return Response.json({ ok: true, message: "Message command delivered to the active Windows helper" });
+      }, { timeoutMs: 30000 });
+      return Response.json({ ok: true, message: "PC confirmed that the message was shown" });
     }
 
     return Response.json({ error: "Unsupported action" }, { status: 400 });

@@ -22,6 +22,7 @@ export default function DeviceNameEditor({ deviceId, personName, deviceName }) {
       });
       const data=await response.json();
       if(!response.ok) throw new Error(data.error||"Update failed");
+      if(data.warning){setError(data.warning);return;}
       setOpen(false);
       router.refresh();
     }catch(err){

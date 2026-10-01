@@ -51,7 +51,7 @@ export default function SetupCodePanel() {
           <strong>Download WindowsProtect</strong>
           <p><a href="/download" target="_blank" rel="noreferrer">Open the public download page</a> — customers can enter their own details and download without dashboard access.</p>
           <p>For a new PC, enter its owner and label. The download includes a one-time setup code automatically. Extract both files into the same folder and run WindowsProtect_Setup.exe within 30 minutes.</p>
-          <p><a href="https://github.com/ajaypremise/devicehost/releases/download/v0.5.13/WindowsProtect_Setup.exe">Download installer for an existing PC</a> — install this update once; later agent updates are automatic.</p>
+          <p><a href="https://github.com/ajaypremise/devicehost/releases/download/v0.5.14/WindowsProtect_Setup.exe">Download installer for an existing PC</a> — install this update once; later agent updates are automatic.</p>
           <p>The installer is currently unsigned; Windows may show a publisher warning.</p>
         </div>
         <form onSubmit={createCode}>
