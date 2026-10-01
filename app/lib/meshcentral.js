@@ -1,5 +1,8 @@
 import WebSocket from "ws";
 
+const syncCache = globalThis.__windowsProtectMeshSyncCache || new Map();
+globalThis.__windowsProtectMeshSyncCache = syncCache;
+
 function b64(value) {
   return Buffer.from(String(value || "")).toString("base64");
 }
@@ -70,4 +73,28 @@ export function sendMeshCentral(command, { timeoutMs = 7000 } = {}) {
       }
     });
   });
+}
+
+function validNodeId(nodeId){return /^node\/[^/]*\/[A-Za-z0-9@$+_=.-]{20,200}$/.test(String(nodeId||""));}
+
+export async function syncMeshCentralDevice({nodeId,name,description="",force=false,send=sendMeshCentral}){
+  if(!validNodeId(nodeId))throw new Error("Invalid support device identity.");
+  const cleanName=String(name||"").trim().slice(0,120),cleanDescription=String(description||"").trim().slice(0,120);
+  if(!cleanName)throw new Error("Device name is required.");
+  const signature=`${cleanName}\n${cleanDescription}`,previous=syncCache.get(nodeId);
+  if(!force && previous?.signature===signature && Date.now()-previous.at<300000)return false;
+  syncCache.set(nodeId,{signature,at:Date.now()});
+  try{
+    await send({action:"changedevice",nodeid:nodeId,name:cleanName,desc:cleanDescription,responseid:`device-sync-${Date.now()}-${Math.random().toString(16).slice(2)}`},{timeoutMs:10000});
+    return true;
+  }catch(error){syncCache.delete(nodeId);throw error;}
+}
+
+export async function removeMeshCentralDevices(nodeIds,{send=sendMeshCentral}={}){
+  const ids=[...new Set((nodeIds||[]).filter(Boolean))];
+  if(ids.some(id=>!validNodeId(id)))throw new Error("Invalid support device identity.");
+  if(!ids.length)return false;
+  await send({action:"removedevices",nodeids:ids,responseid:`device-remove-${Date.now()}-${Math.random().toString(16).slice(2)}`},{timeoutMs:10000});
+  for(const id of ids)syncCache.delete(id);
+  return true;
 }

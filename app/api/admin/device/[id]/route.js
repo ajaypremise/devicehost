@@ -1,5 +1,5 @@
 import { adminAuthorized } from "../../../../lib/device-actions.js";
-import { meshcentralConfigured, sendMeshCentral } from "../../../../lib/meshcentral.js";
+import { meshcentralConfigured, syncMeshCentralDevice } from "../../../../lib/meshcentral.js";
 
 export const runtime = "nodejs";
 
@@ -59,12 +59,7 @@ export async function PATCH(request, { params }) {
     let supportNameSynced = !current.meshcentral_node_id;
     if (current.meshcentral_node_id && meshcentralConfigured()) {
       try {
-        await sendMeshCentral({
-          action: "changedevice",
-          nodeid: current.meshcentral_node_id,
-          name: personName,
-          responseid: `device-name-${Date.now()}-${Math.random().toString(16).slice(2)}`
-        }, { timeoutMs: 10000 });
+        await syncMeshCentralDevice({nodeId:current.meshcentral_node_id,name:personName,description:deviceName,force:true});
         supportNameSynced = true;
       } catch {}
     }

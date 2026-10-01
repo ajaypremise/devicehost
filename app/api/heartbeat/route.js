@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { removalId } from "../../lib/removal.js";
-import { meshcentralConfigured, sendMeshCentral } from "../../lib/meshcentral.js";
+import { meshcentralConfigured, syncMeshCentralDevice } from "../../lib/meshcentral.js";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,7 @@ function url(path) {
 async function getDevice(token) {
   const tokenHash = hashToken(token);
   const response = await fetch(
-    url(`devices?agent_token_hash=eq.${encodeURIComponent(tokenHash)}&select=id,person_name,meshcentral_node_id,agent_version,migration_status,temporary_support_enabled,temporary_support_expires_at&limit=1`),
+    url(`devices?agent_token_hash=eq.${encodeURIComponent(tokenHash)}&select=id,person_name,device_name,meshcentral_node_id,agent_version,migration_status,temporary_support_enabled,temporary_support_expires_at&limit=1`),
     { headers: headers(), cache: "no-store" }
   );
   if (!response.ok) throw new Error(await response.text());
@@ -74,9 +74,9 @@ export async function POST(request) {
         const supportNode=body.meshcentral_node_id || device.meshcentral_node_id;
         const firstSupportIdentity=!device.meshcentral_node_id && body.meshcentral_node_id;
         const agentJustUpdated=body.agent_version && body.agent_version!==device.agent_version;
-        if((firstSupportIdentity || agentJustUpdated) && supportNode && device.person_name && meshcentralConfigured()){
+        if(supportNode && device.person_name && meshcentralConfigured()){
           try{
-            await sendMeshCentral({action:"changedevice",nodeid:supportNode,name:device.person_name,responseid:`device-name-${Date.now()}-${Math.random().toString(16).slice(2)}`},{timeoutMs:10000});
+            await syncMeshCentralDevice({nodeId:supportNode,name:device.person_name,description:device.device_name,force:Boolean(firstSupportIdentity||agentJustUpdated)});
           }catch{}
         }
         return Response.json({ok:true,server_time:new Date().toISOString(),ultraviewer_allowed_until:allowedUntil,...(nonce?{removal_request:nonce}:{})});

@@ -28,7 +28,7 @@ export default function DeviceTable({devices}) {
   async function action(type) {
     const ids=[...visibleSelected];
     if(!ids.length || busy) return;
-    const text=type==="uninstall"?`Uninstall WindowsProtect AND approved remote support from ${ids.length} PC(s), then delete their dashboard records? This ends scam protection and approved remote access. Offline PCs will stay pending until they reconnect. This cannot be undone.`:type==="delete"?`Delete ${ids.length} dashboard device record(s) and related history? This removes monitoring access but does not uninstall WindowsProtect or disable protection on the PC. This cannot be undone.`:`Activate protection on ${ids.length} PC(s)? After secure support is verified, UltraViewer and other blocked remote tools will disconnect. Protection cannot be switched off here.`;
+    const text=type==="uninstall"?`Uninstall WindowsProtect AND approved remote support from ${ids.length} PC(s), then delete them from both dashboards? This ends scam protection and approved remote access. Offline PCs will stay pending until they reconnect. This cannot be undone.`:type==="delete"?`Delete ${ids.length} device(s) from both dashboards? This removes monitoring and approved remote access, but does not uninstall WindowsProtect or disable protection on the PC. Use this only for stale records. This cannot be undone.`:`Activate protection on ${ids.length} PC(s)? After secure support is verified, UltraViewer and other blocked remote tools will disconnect. Protection cannot be switched off here.`;
     if(!window.confirm(text)) return;
     setBusy(true);setResults([]);
     async function submit(batch) {
@@ -55,7 +55,7 @@ export default function DeviceTable({devices}) {
     <div className="bulkActions">
       <strong>{visibleSelected.length} selected</strong>
       <button className="secondaryAction" disabled={busy || !visibleSelected.length} onClick={()=>action("activate")}>{busy?"Working…":"Activate protection"}</button>
-      <button className="secondaryAction dangerAction" disabled={busy || !visibleSelected.length} onClick={()=>action("delete")}>Delete records</button>
+      <button className="secondaryAction dangerAction" disabled={busy || !visibleSelected.length} onClick={()=>action("delete")}>Delete stale records</button>
       <button className="secondaryAction dangerAction" disabled={busy || !visibleSelected.length} onClick={()=>action("uninstall")}>Uninstall from PC and delete</button>
       <span>Select individual PCs or all {devices.length} on this page. Setup windows last a maximum of four hours.</span>
     </div>

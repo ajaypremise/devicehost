@@ -1,6 +1,7 @@
 import { activateDevice, adminAuthorized, parseDeviceAction } from "../../../../lib/device-actions.js";
 import crypto from "node:crypto";
 import { removalId, canUninstall } from "../../../../lib/removal.js";
+import { removeMeshCentralDevices } from "../../../../lib/meshcentral.js";
 export const runtime = "nodejs";
 export const maxDuration = 45;
 export async function POST(request) {
@@ -59,7 +60,9 @@ export async function POST(request) {
     }
     if(selection.action==="delete") {
       if(devices.some(d=>removalId(d.migration_status))) return reply({error:"Uninstall is pending. Wait for confirmed removal before deleting its record."},409);
-      // One filtered DELETE; child records follow existing database FK rules.
+      // Keep both control planes consistent. If support cleanup fails, retain
+      // every dashboard record so the action can be retried safely.
+      await removeMeshCentralDevices(devices.map(d=>d.meshcentral_node_id));
       const deleted=await fetch(`${base}/rest/v1/devices?${filter}&select=id`,{method:"DELETE",headers,cache:"no-store",signal:AbortSignal.timeout(10000)});
       if(!deleted.ok) throw new Error("Device records could not be deleted.");
       const rows=await deleted.json();
