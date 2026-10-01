@@ -22,8 +22,10 @@ internal static class RemovalCoordinator {
     if((File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0) throw new IOException("Removal directory must not be a link.");
     foreach(var entry in Directory.GetFileSystemEntries(path)) if((File.GetAttributes(entry)&FileAttributes.ReparsePoint)!=0) throw new IOException("Removal files must not be links.");
     var security=new DirectorySecurity(); security.SetAccessRuleProtection(true,false); security.SetOwner(new SecurityIdentifier("S-1-5-18"));
-    foreach(var sid in new[]{"S-1-5-18","S-1-5-32-544"}) security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid),FileSystemRights.FullControl,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
+    security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-5-18"),FileSystemRights.FullControl,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
+    security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-5-32-544"),FileSystemRights.ReadAndExecute,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
     Directory.SetAccessControl(path,security);
+    TamperProtection.SetDirectory(path,true,false);
   }
   internal static bool Start(string id){
     if(!ValidId(id)) return false;

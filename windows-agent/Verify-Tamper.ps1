@@ -66,3 +66,6 @@ try{
  Remove-Item ('HKLM:\'+$key) -Recurse -Force -ErrorAction SilentlyContinue
  Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# Successful cleanup may intentionally encounter an already-deleted service.
+$global:LASTEXITCODE=0
