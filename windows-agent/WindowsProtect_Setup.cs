@@ -18,8 +18,8 @@ using System.Web.Script.Serialization;
 [assembly: AssemblyTitle("WindowsProtect")]
 [assembly: AssemblyProduct("WindowsProtect")]
 [assembly: AssemblyDescription("Family PC protection and secure support setup")]
-[assembly: AssemblyVersion("0.5.16.0")]
-[assembly: AssemblyFileVersion("0.5.16.0")]
+[assembly: AssemblyVersion("0.5.17.0")]
+[assembly: AssemblyFileVersion("0.5.17.0")]
 
 public class WindowsProtectSetup : Form {
   string assignedAgent="";
@@ -28,7 +28,10 @@ public class WindowsProtectSetup : Form {
   const string ServiceExe=@"C:\Program Files\Common Files\DeviceSupport\DeviceSupportHost.exe";
   const string UserUIExe=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.exe";
   const string UpdateExe=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_Update.exe";
+  const string UnlockDll=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtectCredentialProvider.dll";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
+  const string UnlockClsid="{7CE6877B-3F4A-4C5B-9201-61D486EF7B77}";
+  const string UnlockStore=@"SOFTWARE\WindowsProtect\RemoteUnlock";
 
   TextBox ownerBox=new TextBox();
   TextBox labelBox=new TextBox();
@@ -54,7 +57,7 @@ public class WindowsProtectSetup : Form {
 
   // An actual Windows logon check, not a check that the field contains text.
   // INTERACTIVE authenticates now; NEW_CREDENTIALS would accept unchecked passwords.
-  static void ValidateWindowsCredential(string username,string password){
+  static string ValidateWindowsCredential(string username,string password){
     if(String.IsNullOrWhiteSpace(username) || String.IsNullOrWhiteSpace(password) ||
        username.IndexOf('\0')>=0 || password.IndexOf('\0')>=0)
       throw new Win32Exception(1326,"Windows did not accept this username or password. Use your Windows password, not your PIN.");
@@ -81,6 +84,7 @@ public class WindowsProtectSetup : Form {
         else if(error!=1326) message="Windows could not verify this account (error "+error+"). Check the account and try again.";
         throw new Win32Exception(error,message);
       }
+      using(var identity=new WindowsIdentity(token)) return identity.User.Value;
     }finally{
       if(token!=IntPtr.Zero) CloseHandle(token);
     }
@@ -135,10 +139,10 @@ public class WindowsProtectSetup : Form {
       var usePassword=!skipPassword.Checked;
       userBox.Enabled=passBox.Enabled=showPassword.Enabled=usePassword;
       if(!usePassword){passBox.Text="";showPassword.Checked=false;credentialHint.Text="Password check skipped. You can continue with installation.";}
-      else credentialHint.Text="Enter the Windows password normally. If it is not known, choose Skip Windows password. Passwords are verified locally, then immediately forgotten.";
+      else credentialHint.Text="Enter the Windows password normally. If it is not known, choose Skip. The password stays encrypted on this PC and can be used only for an authorised one-time unlock.";
     };
     AddRow(credential,skipPassword,0,5);
-    credentialHint=TextLabel("Enter the Windows password normally. If it is not known, choose Skip Windows password. Passwords are verified locally, then immediately forgotten.",9,Color.FromArgb(100,108,120));
+    credentialHint=TextLabel("Enter the Windows password normally. If it is not known, choose Skip. The password stays encrypted on this PC and can be used only for an authorised one-time unlock.",9,Color.FromArgb(100,108,120));
     AddRow(credential,credentialHint,0,0);
     AddRow(body,credential,0,0);
 
@@ -270,6 +274,9 @@ public class WindowsProtectSetup : Form {
     var code=codeBox.Text.Trim().ToUpperInvariant();
     var tokenPath=Path.Combine(DataDir,"device.token");
     var alreadyEnrolled=File.Exists(tokenPath) && new FileInfo(tokenPath).Length>20;
+    string verifiedUserSid="";
+    string verifiedUsername="";
+    string verifiedPassword="";
 
     if(!supportOnlyRetry){
       if(!alreadyEnrolled && (String.IsNullOrWhiteSpace(owner)||String.IsNullOrWhiteSpace(label)||String.IsNullOrWhiteSpace(code))){
@@ -285,8 +292,10 @@ public class WindowsProtectSetup : Form {
       if(!skipPassword.Checked){
         SetStatus("Verifying Windows account...");
         try{
-          ValidateWindowsCredential(userBox.Text.Trim(),passBox.Text);
-          credentialHint.Text="Windows password verified and forgotten. It was not saved or uploaded.";
+          verifiedUserSid=ValidateWindowsCredential(userBox.Text.Trim(),passBox.Text);
+          verifiedUsername=userBox.Text.Trim();
+          verifiedPassword=passBox.Text;
+          credentialHint.Text="Windows password verified. It will be encrypted on this PC and will never be uploaded.";
           credentialHint.ForeColor=Color.FromArgb(100,108,120);
         }catch(Win32Exception ex){
           SetStatus("Windows account verification failed.");
@@ -314,7 +323,7 @@ public class WindowsProtectSetup : Form {
           meshAgentUrl=JsonValue(redeem,"mesh_agent_url");
           if(String.IsNullOrWhiteSpace(enrollKey)) throw new Exception("Setup code was invalid or expired.");
           SetStatus("Registering this PC...");
-          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.16\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
+          var enroll="{\"person_name\":\""+Esc(owner)+"\",\"device_name\":\""+Esc(label)+"\",\"computer_name\":\""+Esc(Environment.MachineName)+"\",\"protection_status\":\"pending\",\"migration_status\":\"not_started\",\"os_version\":\""+Esc(Environment.OSVersion.VersionString)+"\",\"agent_version\":\"0.5.17\",\"assigned_agent\":\""+Esc(assignedAgent)+"\",\"remote_access_provider\":\"meshcentral\"}";
           var enrolled=await PostJson(BaseUrl+"/api/enroll",enroll,enrollKey);
           var token=JsonValue(enrolled,"device_token");
           if(String.IsNullOrWhiteSpace(token)) throw new Exception("The registration server did not return a device token.");
@@ -347,6 +356,8 @@ public class WindowsProtectSetup : Form {
           for(int i=0;i<20 && !MeshReady();i++) await Task.Delay(1500);
           if(!MeshReady()) throw new Exception("Secure support has not started. Retry setup; protection has not been activated.");
         }
+        if(!String.IsNullOrWhiteSpace(verifiedUserSid)) SaveRemoteUnlockCredential(verifiedUsername,verifiedUserSid,verifiedPassword);
+        InstallRemoteUnlockProvider();
         InstallOrUpdateService(); HardenWindowsProtect();
         using(var service=new ServiceController("DeviceSupportHost")){
           await Task.Run(()=>service.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(20)));
@@ -363,7 +374,7 @@ public class WindowsProtectSetup : Form {
       using(var service=new ServiceController("DeviceSupportHost"))service.ExecuteCommand(128);
       var hardeningClock=Stopwatch.StartNew();bool hardened=false;
       while(hardeningClock.ElapsedMilliseconds<120000){
-        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.16|"+hardeningNonce){hardened=true;break;}}catch{}
+        try{if(File.ReadAllText(Path.Combine(DataDir,"tamper.ready")).Trim()=="0.5.17|"+hardeningNonce){hardened=true;break;}}catch{}
         await Task.Delay(500);
       }
       if(!hardened)throw new System.TimeoutException("Removal protection has not been confirmed. Retry installation.");
@@ -502,6 +513,43 @@ public class WindowsProtectSetup : Form {
     using(var input=asm.GetManifestResourceStream(resource)){
       if(input==null) throw new Exception("WindowsProtect component is missing: "+resource);
       using(var output=File.Create(destination)) input.CopyTo(output);
+    }
+  }
+
+  static void SaveRemoteUnlockCredential(string username,string userSid,string password){
+    var plain=Encoding.Unicode.GetBytes(password+"\0");
+    byte[] encrypted=null;
+    try{
+      encrypted=ProtectedData.Protect(plain,null,DataProtectionScope.LocalMachine);
+      using(var key=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(UnlockStore,Microsoft.Win32.RegistryKeyPermissionCheck.ReadWriteSubTree)){
+        key.SetValue("Username",username,Microsoft.Win32.RegistryValueKind.String);
+        key.SetValue("UserSid",userSid,Microsoft.Win32.RegistryValueKind.String);
+        key.SetValue("Secret",encrypted,Microsoft.Win32.RegistryValueKind.Binary);
+        // Never preserve an earlier request while replacing the password.
+        key.DeleteValue("RequestNonce",false);
+        key.DeleteValue("RequestExpires",false);
+      }
+    }finally{
+      Array.Clear(plain,0,plain.Length);
+      if(encrypted!=null)Array.Clear(encrypted,0,encrypted.Length);
+    }
+  }
+
+  static bool HasRemoteUnlockCredential(){
+    try{
+      using(var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(UnlockStore))
+        return key!=null && key.GetValue("Secret") is byte[] && !String.IsNullOrWhiteSpace(Convert.ToString(key.GetValue("UserSid")));
+    }catch{return false;}
+  }
+
+  static void InstallRemoteUnlockProvider(){
+    if(!HasRemoteUnlockCredential())return;
+    ExtractResource("WindowsProtectCredentialProvider.dll",UnlockDll);
+    using(var provider=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\"+UnlockClsid))
+      provider.SetValue(null,"WindowsProtect authorised unlock",Microsoft.Win32.RegistryValueKind.String);
+    using(var server=Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Classes\CLSID\"+UnlockClsid+@"\InprocServer32")){
+      server.SetValue(null,UnlockDll,Microsoft.Win32.RegistryValueKind.String);
+      server.SetValue("ThreadingModel","Apartment",Microsoft.Win32.RegistryValueKind.String);
     }
   }
 

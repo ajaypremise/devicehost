@@ -13,7 +13,7 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.16";
+  const string AgentVersion="0.5.17";
 
   static readonly string[] RemoteToolDisplayNames = new[]{
     "AnyDesk","TeamViewer","UltraViewer","RustDesk","Supremo","AeroAdmin","DWAgent",

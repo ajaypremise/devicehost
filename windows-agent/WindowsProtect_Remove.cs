@@ -17,6 +17,7 @@ internal static class WindowsProtectRemoval {
   const string Data=@"C:\ProgramData\WindowsProtect";
   const string Install=@"C:\Program Files\Common Files\DeviceSupport";
   const string Helper=@"C:\Program Files\Common Files\DeviceSupport\WindowsProtect_UserUI.exe";
+  const string UnlockClsid="{7CE6877B-3F4A-4C5B-9201-61D486EF7B77}";
   const string BaseUrl="https://devicehost.vercel.app";
   const string Credential="WindowsProtect/LocalWindowsAccount";
   [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct TestCredential {
@@ -54,6 +55,7 @@ internal static class WindowsProtectRemoval {
         if(validation==401 && (!File.Exists(Path.Combine(Stage,"complete.txt")) || File.ReadAllText(Path.Combine(Stage,"complete.txt")).Trim()!=id)) return 1;
         var supportPaths=ReadSupportPaths();
         reason="waiting_for_user";
+        RemoveRemoteUnlock();
         ClearCredentials();
         reason="cleanup_failed";
         StopProtection();
@@ -114,6 +116,12 @@ internal static class WindowsProtectRemoval {
   }
   static bool DeleteCredential(){
     return CredDelete(Credential,1,0) || Marshal.GetLastWin32Error()==1168;
+  }
+  static void RemoveRemoteUnlock(){
+    // Unregister before deleting files so LogonUI can never load the provider again.
+    Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\"+UnlockClsid,false);
+    Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\Classes\CLSID\"+UnlockClsid,false);
+    Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\WindowsProtect\RemoteUnlock",false);
   }
   static void ClearCredentials(){
     var pending=new HashSet<string>(File.ReadAllLines(Path.Combine(Stage,"owners.txt")));

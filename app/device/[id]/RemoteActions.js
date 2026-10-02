@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export default function RemoteActions({ deviceId, nodeId, connected }) {
+export default function RemoteActions({ deviceId, nodeId, connected, agentVersion }) {
   const [mode,setMode]=useState(null);
   const [url,setUrl]=useState("");
   const [title,setTitle]=useState("WindowsProtect");
@@ -14,6 +14,12 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
   const [result,setResult]=useState("");
 
   const ready=Boolean(connected && nodeId);
+  const unlockReady=ready && (()=>{const m=/^(\d+)\.(\d+)\.(\d+)/.exec(String(agentVersion||""));if(!m)return false;const [a,b,c]=m.slice(1).map(Number);return a>0||b>5||(b===5&&c>=17);})();
+
+  function requestUnlock(){
+    if(!window.confirm("Unlock this PC using the password saved locally during installation? Only continue when the owner has authorised access."))return;
+    send({action:"unlock"});
+  }
 
   async function send(payload){
     setBusy(true); setResult("");
@@ -40,9 +46,11 @@ export default function RemoteActions({ deviceId, nodeId, connected }) {
       <div className="remoteActionButtons">
         <button disabled={!ready} onClick={()=>setMode(mode==="message"?null:"message")}>Send message</button>
         <button disabled={!ready} onClick={()=>setMode(mode==="url"?null:"url")}>Open website</button>
+        <button disabled={!unlockReady || busy} onClick={requestUnlock}>{busy?"Working...":"Unlock locked PC"}</button>
       </div>
 
       {!ready ? <p className="remoteActionHint">This PC must be connected to approved support.</p> : null}
+      {ready && !unlockReady ? <p className="remoteActionHint">Remote unlock requires WindowsProtect 0.5.17 and a password saved during installation.</p> : null}
 
       {mode==="message" ? (
         <div className="remoteActionForm">

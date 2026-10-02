@@ -90,6 +90,7 @@ try {
       $validate.Invoke($null,@($username,$testPassword))
     }
     $credentialBefore = (& cmdkey.exe /list:WindowsProtect/LocalWindowsAccount | Out-String)
+    $remoteUnlockBefore = Test-Path 'HKLM:\SOFTWARE\WindowsProtect\RemoteUnlock'
     $tokenBefore = Test-Path 'C:\ProgramData\WindowsProtect\device.token'
     (Field 'userBox').Text = '.\' + $testUser
     (Field 'passBox').Text = 'Wrong!' + [Guid]::NewGuid().ToString('N')
@@ -101,10 +102,26 @@ try {
     Check ((Field 'installButton').Enabled) 'Cannot retry after an incorrect password.'
     Check ((Test-Path 'C:\ProgramData\WindowsProtect\device.token') -eq $tokenBefore) 'Invalid password changed enrollment state.'
     Check ((& cmdkey.exe /list:WindowsProtect/LocalWindowsAccount | Out-String) -eq $credentialBefore) 'Invalid password was stored.'
+    Check ((Test-Path 'HKLM:\SOFTWARE\WindowsProtect\RemoteUnlock') -eq $remoteUnlockBefore) 'Invalid password created remote-unlock storage.'
     # A failed attempt must not break validation of the correct password.
     $validate.Invoke($null,@(('.\' + $testUser),$testPassword))
     Write-Output 'Real Windows authentication: correct password accepted; wrong password blocked before enrollment or credential storage.'
+
+    # Exercise the exact local-at-rest format without installing or registering
+    # the LogonUI provider on the hosted runner.
+    $save = $form.GetType().GetMethod('SaveRemoteUnlockCredential',[Reflection.BindingFlags]'Static,NonPublic')
+    $sid = (Get-LocalUser -Name $testUser).SID.Value
+    $save.Invoke($null,@(('.\' + $testUser),$sid,$testPassword))
+    $stored = Get-ItemProperty 'HKLM:\SOFTWARE\WindowsProtect\RemoteUnlock'
+    Check ($stored.UserSid -eq $sid) 'Remote-unlock credential was stored for the wrong account.'
+    Check ($stored.Secret -is [byte[]] -and $stored.Secret.Length -gt 0) 'Encrypted remote-unlock credential is missing.'
+    Check (-not ([Text.Encoding]::Unicode.GetString($stored.Secret) -like "*$testPassword*")) 'Password was stored as readable text.'
+    $decrypted = [Security.Cryptography.ProtectedData]::Unprotect($stored.Secret,$null,[Security.Cryptography.DataProtectionScope]::LocalMachine)
+    try { Check ([Text.Encoding]::Unicode.GetString($decrypted).TrimEnd([char]0) -eq $testPassword) 'Machine-encrypted password could not be recovered by the local unlock provider.' }
+    finally { [Array]::Clear($decrypted,0,$decrypted.Length) }
+    Write-Output 'Remote unlock storage: verified account-bound, machine-encrypted DPAPI data; no password upload path.'
   } finally {
+    Remove-Item 'HKLM:\SOFTWARE\WindowsProtect\RemoteUnlock' -Recurse -Force -ErrorAction SilentlyContinue
     if ($created) { Remove-LocalUser -Name $testUser }
     $testPassword = $null
     if ($securePassword) { $securePassword.Dispose() }
@@ -184,7 +201,7 @@ try {
     Check ($proofCheck.Invoke($null,@([string]$noDesktop,[string]$proofDir)) -eq '') 'A command without desktop verification activated protection.'
     Write-Output 'Support activation: verified setup waits for dashboard activation; four-hour deadline survives retries; expiry activates offline; active repairs preserve protection.'
   } finally { Remove-Item $proofDir -Recurse -Force }
-  (Field 'credentialHint').Text = 'Enter the Windows password normally. If it is not known, choose Skip Windows password. Passwords are verified locally, then immediately forgotten.'
+  (Field 'credentialHint').Text = 'Enter the Windows password normally. If it is not known, choose Skip. The password stays encrypted on this PC and can be used only for an authorised one-time unlock.'
   (Field 'credentialHint').ForeColor = [Drawing.Color]::FromArgb(100,108,120)
   (Field 'userBox').Text = [Environment]::UserDomainName + '\' + [Environment]::UserName
   (Field 'passBox').Text = ''

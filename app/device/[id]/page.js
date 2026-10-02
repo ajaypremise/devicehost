@@ -102,7 +102,7 @@ export default async function DevicePage({ params }) {
         <a href="https://34-69-184-103.sslip.io" target="_blank" rel="noreferrer"><strong>Temporary support</strong><span>Create a time-limited guest link</span></a>
       </section>
 
-      <RemoteActions deviceId={device.id} nodeId={device.meshcentral_node_id || ""} connected={remoteOn} />
+      <RemoteActions deviceId={device.id} nodeId={device.meshcentral_node_id || ""} connected={remoteOn} agentVersion={device.agent_version || ""} />
       <UltraViewerControl deviceId={device.id} allowedUntil={device.temporary_support_expires_at || null} />
 
       <section className="detailGrid">
