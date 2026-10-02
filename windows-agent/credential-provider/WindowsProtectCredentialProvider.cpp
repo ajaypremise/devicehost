@@ -110,7 +110,7 @@ static HRESULT ConsumeRequestAndDecrypt(PWSTR *password)
 
 enum FIELD_ID { FI_LABEL, FI_STATUS, FI_PASSWORD, FI_COUNT };
 static const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR kFields[FI_COUNT] = {
-    { FI_LABEL, CPFT_SMALL_TEXT, const_cast<PWSTR>(L"WindowsProtect unlock"), CPFG_CREDENTIAL_PROVIDER_LABEL },
+    { FI_LABEL, CPFT_SMALL_TEXT, const_cast<PWSTR>(L"WindowsProtect unlock") },
     { FI_STATUS, CPFT_LARGE_TEXT, const_cast<PWSTR>(L"Authorised remote unlock") },
     { FI_PASSWORD, CPFT_PASSWORD_TEXT, const_cast<PWSTR>(L"Password") }
 };
@@ -126,7 +126,7 @@ public:
         GUID provider = {};
         HRESULT hr = user->GetProviderID(&provider);
         local_ = SUCCEEDED(hr) && provider == Identity_LocalUserProvider;
-        if (SUCCEEDED(hr)) hr = user->GetStringValue(PKEY_Identity_UserSid, &sid_);
+        if (SUCCEEDED(hr)) hr = user->GetSid(&sid_);
         if (SUCCEEDED(hr)) hr = user->GetStringValue(PKEY_Identity_QualifiedUserName, &qualified_);
         return hr;
     }
@@ -258,7 +258,7 @@ public:
         DWORD userCount = 0; users_->GetCount(&userCount);
         for (DWORD i = 0; i < userCount; ++i) {
             ICredentialProviderUser *user = nullptr; PWSTR sid = nullptr;
-            if (SUCCEEDED(users_->GetAt(i, &user)) && SUCCEEDED(user->GetStringValue(PKEY_Identity_UserSid, &sid)) && sid && _wcsicmp(sid, storedSid) == 0) {
+            if (SUCCEEDED(users_->GetAt(i, &user)) && SUCCEEDED(user->GetSid(&sid)) && sid && _wcsicmp(sid, storedSid) == 0) {
                 credential_ = new(std::nothrow) UnlockCredential();
                 if (credential_ && FAILED(credential_->Initialize(scenario_, user))) ReleaseCredential();
             }
