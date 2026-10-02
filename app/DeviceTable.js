@@ -78,7 +78,7 @@ export default function DeviceTable({devices}) {
       <th>Owner / device</th><th>Contact</th><th>Agent</th><th>Sales</th><th>Computer</th><th>Status</th><th>Security</th><th>Remote</th><th>Protection</th><th>Last seen</th><th></th>
     </tr></thead><tbody>{devices.map(device=>{
       const online=device.last_seen_at && (now || Date.now())-Date.parse(device.last_seen_at)<600000;
-      const remote=device.remote_access_provider==="meshcentral"?device.meshcentral_connected:device.rustdesk_service_running;
+      const remote=online && (device.remote_access_provider==="meshcentral"?device.meshcentral_connected:device.rustdesk_service_running);
       return <tr key={device.id}>
         <td><input type="checkbox" aria-label={`Select ${device.person_name || device.device_name || device.device_code}`} checked={visibleSelected.includes(device.id)} disabled={busy} onChange={()=>toggle(device.id)}/></td>
         <td><Link className="devicePrimary" href={`/device/${device.id}`}><strong>{device.person_name || "Unnamed"}</strong><span>{device.device_name || "Unnamed device"} · {device.device_code}</span></Link></td>

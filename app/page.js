@@ -2,6 +2,7 @@ import Link from "next/link";
 import SetupCodePanel from "./SetupCodePanel";
 import DeviceTable from "./DeviceTable";
 import { recentRemoteAccessAlerts, remoteAccessTool } from "./lib/security-alerts.js";
+import { deviceOnline, remoteSupportConnected } from "./lib/device-presence.js";
 
 export const dynamic = "force-dynamic";
 
@@ -27,13 +28,11 @@ function timeAgo(value) {
 }
 
 function isOnline(lastSeen) {
-  return Boolean(lastSeen) && Date.now() - new Date(lastSeen).getTime() < 10 * 60 * 1000;
+  return deviceOnline(lastSeen);
 }
 
 function remoteSupportOn(device) {
-  return device.remote_access_provider === "meshcentral"
-    ? device.meshcentral_connected === true
-    : device.rustdesk_service_running === true;
+  return remoteSupportConnected(device);
 }
 
 function postureLabel(value) {
