@@ -10,6 +10,14 @@ on:
       - "package-lock.json"
       - "tests/**"
       - ".github/workflows/verify-devicehost.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "proxy.js"
+      - "package.json"
+      - "package-lock.json"
+      - "tests/**"
+      - ".github/workflows/verify-devicehost.yml"
 
 permissions:
   contents: read

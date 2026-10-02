@@ -6,6 +6,10 @@ on:
     paths:
       - "windows-agent/**"
       - ".github/workflows/build-windowsprotect.yml"
+  pull_request:
+    paths:
+      - "windows-agent/**"
+      - ".github/workflows/build-windowsprotect.yml"
 
 permissions:
   contents: read
