@@ -431,7 +431,7 @@ public sealed class DeviceSupportHost : ServiceBase {
       var directory=Path.Combine(DataDir,"UI");Directory.CreateDirectory(directory);
       var id=Guid.NewGuid().ToString("N");
       var title=Convert.ToBase64String(Encoding.UTF8.GetBytes("Remote access blocked"));
-      var message=Convert.ToBase64String(Encoding.UTF8.GetBytes("WindowsProtect stopped "+(String.IsNullOrWhiteSpace(tool)?"an unauthorized remote-access tool":tool)+".\r\n\r\nIf you did not expect this, do not share passwords or payment information. Contact your trusted support person."));
+      var message=Convert.ToBase64String(Encoding.UTF8.GetBytes("WindowsProtect stopped "+(String.IsNullOrWhiteSpace(tool)?"an unauthorized remote-access tool":tool)+".\r\n\r\nIf you did not expect this, do not share passwords or payment information. Contact CYBERSHIELD on Tollfree for Help."));
       var destination=Path.Combine(directory,"command-"+id+".txt");var temporary=destination+".tmp";
       File.WriteAllText(temporary,"message|"+title+"|"+message+"|standard|center|error|",Encoding.UTF8);
       if(File.Exists(destination))File.Delete(destination);File.Move(temporary,destination);
