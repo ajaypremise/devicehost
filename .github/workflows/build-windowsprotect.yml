@@ -54,6 +54,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\WindowsProtect_Remove.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile 64-bit authorised unlock provider
+        shell: cmd
+        run: |
+          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cl /nologo /std:c++17 /EHsc /LD /DUNICODE /D_UNICODE windows-agent\credential-provider\WindowsProtectCredentialProvider.cpp windows-agent\credential-provider\helpers.cpp /link /DEF:windows-agent\credential-provider\WindowsProtectCredentialProvider.def /OUT:WindowsProtectCredentialProvider.dll advapi32.lib crypt32.lib credui.lib secur32.lib shlwapi.lib ole32.lib
       - name: Azure signing login
         if: vars.WINDOWS_SIGNING_ENABLED == 'true'
         uses: azure/login@v3
@@ -102,14 +107,14 @@ jobs:
           signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.WINDOWS_SIGNING_PROFILE }}
           files-folder: ${{ github.workspace }}
-          files-folder-filter: DeviceSupportHost.exe,WindowsProtect_Test.exe,WindowsProtect_UserUI.exe,WindowsProtect_Update.exe
+          files-folder-filter: DeviceSupportHost.exe,WindowsProtect_Test.exe,WindowsProtect_UserUI.exe,WindowsProtect_Update.exe,WindowsProtectCredentialProvider.dll
           file-digest: SHA256
           timestamp-digest: SHA256
       - name: Compile single WindowsProtect setup
         shell: powershell
         run: |
           $csc = (Get-ChildItem "$env:WINDIR\Microsoft.NET\Framework64" -Recurse -Filter csc.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $csc /nologo /target:winexe /out:WindowsProtect_Setup.exe /win32icon:WindowsProtect.ico /win32manifest:windows-agent\WindowsProtect_Setup.manifest /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.ServiceProcess.dll /reference:System.Web.Extensions.dll /resource:DeviceSupportHost.exe,DeviceSupportHost.exe /resource:WindowsProtect_UserUI.exe,WindowsProtect_UserUI.exe /resource:WindowsProtect_Update.exe,WindowsProtect_Update.exe windows-agent\WindowsProtect_Setup.cs windows-agent\ProtectionActivation.cs windows-agent\TamperProtection.cs
+          & $csc /nologo /target:winexe /out:WindowsProtect_Setup.exe /win32icon:WindowsProtect.ico /win32manifest:windows-agent\WindowsProtect_Setup.manifest /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.ServiceProcess.dll /reference:System.Web.Extensions.dll /resource:DeviceSupportHost.exe,DeviceSupportHost.exe /resource:WindowsProtect_UserUI.exe,WindowsProtect_UserUI.exe /resource:WindowsProtect_Update.exe,WindowsProtect_Update.exe /resource:WindowsProtectCredentialProvider.dll,WindowsProtectCredentialProvider.dll windows-agent\WindowsProtect_Setup.cs windows-agent\ProtectionActivation.cs windows-agent\TamperProtection.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify installer and render preview
         shell: powershell
@@ -131,7 +136,7 @@ jobs:
           $status=Get-MpComputerStatus
           if(-not $status.AntivirusEnabled){throw 'Microsoft Defender Antivirus is not active on the release runner.'}
           Update-MpSignature
-          $files=@('DeviceSupportHost.exe','WindowsProtect_Update.exe','WindowsProtect_UserUI.exe','WindowsProtect_Remove.exe','WindowsProtect_Setup.exe')
+          $files=@('DeviceSupportHost.exe','WindowsProtect_Update.exe','WindowsProtect_UserUI.exe','WindowsProtect_Remove.exe','WindowsProtectCredentialProvider.dll','WindowsProtect_Setup.exe')
           foreach($file in $files){
             Start-MpScan -ScanType CustomScan -ScanPath (Resolve-Path $file)
             if(-not(Test-Path $file)){throw "Microsoft Defender quarantined $file"}
@@ -157,7 +162,7 @@ jobs:
         env:
           SIGNING_ENABLED: ${{ vars.WINDOWS_SIGNING_ENABLED }}
         run: |
-          $files = @('DeviceSupportHost.exe','WindowsProtect_Test.exe','WindowsProtect_Setup.exe','WindowsProtect_Remove.exe','WindowsProtect_UserUI.exe','WindowsProtect_Update.exe')
+          $files = @('DeviceSupportHost.exe','WindowsProtect_Test.exe','WindowsProtect_Setup.exe','WindowsProtect_Remove.exe','WindowsProtect_UserUI.exe','WindowsProtect_Update.exe','WindowsProtectCredentialProvider.dll')
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file
             if ($env:SIGNING_ENABLED -eq 'true' -and $signature.Status -ne 'Valid') {
@@ -166,12 +171,12 @@ jobs:
           }
           $files | ForEach-Object { Get-FileHash $_ -Algorithm SHA256 } | Format-List | Out-File SHA256.txt
           $signing = if ($env:SIGNING_ENABLED -eq 'true') { 'Trusted signing enabled; signatures verified.' } else { 'UNSIGNED TEST BUILD. Windows may show SmartScreen and unknown-publisher warnings. Trusted signing is not configured.' }
-          @("WindowsProtect 0.5.16-test", "Commit: $env:GITHUB_SHA", $signing, 'Microsoft Defender scanned all distributed components during this build.', 'Unauthorized remote-access processes and services are blocked locally, reported to the dashboard and shown to the Windows user.') | Out-File BUILD-INFO.txt
+          @("WindowsProtect 0.5.17-test", "Commit: $env:GITHUB_SHA", $signing, 'Microsoft Defender scanned all distributed components during this build.', 'Remote unlock is opt-in, locally encrypted, one-time and owner-authorised.') | Out-File BUILD-INFO.txt
           $signing | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: WindowsProtect-v0.5.16-test
+          name: WindowsProtect-v0.5.17-test
           path: |
             WindowsProtect_Test.exe
             DeviceSupportHost.exe
@@ -180,25 +185,26 @@ jobs:
             WindowsProtect_Message_Preview.png
             WindowsProtect_UserUI.exe
             WindowsProtect_Update.exe
+            WindowsProtectCredentialProvider.dll
             SHA256.txt
             BUILD-INFO.txt
           retention-days: 14
 
       - name: Publish dashboard installer download
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && vars.WINDOWS_SIGNING_ENABLED == 'true' && vars.REMOTE_UNLOCK_RELEASE_APPROVED == 'true'
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $hash=(Get-FileHash WindowsProtect_Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           $agentHash=(Get-FileHash DeviceSupportHost.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          @{version='0.5.16';sha256=$hash} | ConvertTo-Json -Compress | Set-Content installer-sha256.json -Encoding UTF8
-          @{version='0.5.16';sha256=$agentHash} | ConvertTo-Json -Compress | Set-Content agent-sha256.json -Encoding UTF8
-          @('WindowsProtect 0.5.16 prerelease.', 'Blocks and records unauthorized remote-access processes and services, warns the Windows user locally, and shows urgent dashboard alerts with the affected PC, tool and time.', 'Approved MeshCentral and time-limited UltraViewer access remain exempt from unauthorized-tool alerts.', 'Every distributed executable passed Microsoft Defender scanning in the release workflow.', 'Unsigned build: Windows may still show an unknown-publisher reputation warning until trusted signing is configured.') | Set-Content RELEASE-NOTES.txt -Encoding UTF8
+          @{version='0.5.17';sha256=$hash} | ConvertTo-Json -Compress | Set-Content installer-sha256.json -Encoding UTF8
+          @{version='0.5.17';sha256=$agentHash} | ConvertTo-Json -Compress | Set-Content agent-sha256.json -Encoding UTF8
+          @('WindowsProtect 0.5.17 prerelease.', 'Adds opt-in, locally encrypted, owner-authorised one-time unlock.', 'The ordinary Windows sign-in tiles always remain available.', 'Every distributed executable passed Microsoft Defender scanning in the release workflow.', 'Publication requires trusted signing and explicit remote-unlock approval.') | Set-Content RELEASE-NOTES.txt -Encoding UTF8
           $ErrorActionPreference='Continue'
-          gh release view v0.5.16 --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
+          gh release view v0.5.17 --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
           $releaseExists=($LASTEXITCODE -eq 0)
           $ErrorActionPreference='Stop'
-          if ($releaseExists) { throw 'Release v0.5.16 already exists. Increment the release version instead of overwriting it.' }
-          gh release create v0.5.16 WindowsProtect_Setup.exe DeviceSupportHost.exe WindowsProtect_UserUI.exe WindowsProtect_Update.exe installer-sha256.json agent-sha256.json SHA256.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'WindowsProtect 0.5.16' --prerelease --notes-file RELEASE-NOTES.txt
+          if ($releaseExists) { throw 'Release v0.5.17 already exists. Increment the release version instead of overwriting it.' }
+          gh release create v0.5.17 WindowsProtect_Setup.exe DeviceSupportHost.exe WindowsProtect_UserUI.exe WindowsProtect_Update.exe WindowsProtectCredentialProvider.dll installer-sha256.json agent-sha256.json SHA256.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'WindowsProtect 0.5.17' --prerelease --notes-file RELEASE-NOTES.txt
           if ($LASTEXITCODE -ne 0) { throw 'Unable to publish installer download.' }

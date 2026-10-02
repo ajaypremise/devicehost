@@ -20,12 +20,44 @@ function baseUrl() {
 
 async function getDevice(id) {
   const response = await fetch(
-    `${baseUrl()}/rest/v1/devices?id=eq.${encodeURIComponent(id)}&select=id,meshcentral_node_id,meshcentral_connected,person_name,device_name&limit=1`,
+    `${baseUrl()}/rest/v1/devices?id=eq.${encodeURIComponent(id)}&select=id,meshcentral_node_id,meshcentral_connected,person_name,device_name,agent_version&limit=1`,
     { headers: headers(), cache: "no-store" }
   );
   if (!response.ok) throw new Error(await response.text());
   const rows = await response.json();
   return rows[0] || null;
+}
+
+function supportsRemoteUnlock(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(String(version || ""));
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 0 || minor > 5 || (minor === 5 && patch >= 17);
+}
+
+export function buildRemoteUnlockScript(nonce) {
+  if (!/^[a-f0-9]{32}$/.test(nonce)) throw new Error("Invalid unlock nonce");
+  return "$ErrorActionPreference='Stop'; $p='HKLM:\\SOFTWARE\\WindowsProtect\\RemoteUnlock'; " +
+    "if(-not(Test-Path $p)){throw 'Remote unlock was skipped during installation.'}; " +
+    "$v=Get-ItemProperty -Path $p; if(-not $v.Secret -or -not $v.UserSid){throw 'No saved Windows password is available.'}; " +
+    "$e=[DateTime]::UtcNow.AddMinutes(2).ToFileTimeUtc(); " +
+    "New-ItemProperty -Path $p -Name RequestNonce -PropertyType String -Value '" + nonce + "' -Force | Out-Null; " +
+    "New-ItemProperty -Path $p -Name RequestExpires -PropertyType QWord -Value $e -Force | Out-Null; 'OK'";
+}
+
+async function recordUnlockRequest(deviceId, nonce) {
+  await fetch(`${baseUrl()}/rest/v1/security_events`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({
+      device_id: deviceId,
+      event_type: "remote_unlock_requested",
+      severity: "warning",
+      title: "Owner-authorised remote unlock requested",
+      details: { nonce: nonce.slice(0, 8), expires_in_seconds: 120 }
+    }),
+    cache: "no-store"
+  }).catch(() => {});
 }
 
 export async function POST(request, { params }) {
@@ -42,6 +74,24 @@ export async function POST(request, { params }) {
     const action = String(body.action || "").toLowerCase();
     const responseid = `devicehost-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const commandId = crypto.randomBytes(16).toString("hex");
+
+    if (action === "unlock") {
+      if (!supportsRemoteUnlock(device.agent_version)) {
+        return Response.json({ error: "Install WindowsProtect 0.5.17 on this PC before using remote unlock." }, { status: 409 });
+      }
+      const nonce = crypto.randomBytes(16).toString("hex");
+      await sendMeshCentral({
+        action: "runcommands",
+        nodeids: [device.meshcentral_node_id],
+        type: 2,
+        cmds: buildRemoteUnlockScript(nonce),
+        runAsUser: 0,
+        reply: true,
+        responseid
+      }, { timeoutMs: 15000 });
+      await recordUnlockRequest(device.id, nonce);
+      return Response.json({ ok: true, message: "One-time unlock sent. It expires in 2 minutes and is consumed after one sign-in attempt." });
+    }
 
     if (action === "open_url") {
       let target;
