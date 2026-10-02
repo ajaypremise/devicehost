@@ -4,6 +4,7 @@ import DeviceNameEditor from "./DeviceNameEditor";
 import RemoteActions from "./RemoteActions";
 import UltraViewerControl from "./UltraViewerControl";
 import { recentRemoteAccessAlerts, remoteAccessTool } from "../../lib/security-alerts.js";
+import { deviceOnline, remoteSupportConnected } from "../../lib/device-presence.js";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ function timeAgo(value) {
 }
 
 function isOnline(lastSeen) {
-  return Boolean(lastSeen) && Date.now() - new Date(lastSeen).getTime() < 10 * 60 * 1000;
+  return deviceOnline(lastSeen);
 }
 
 function StateBlock({ label, value, state = "neutral", note }) {
@@ -66,7 +67,7 @@ export default async function DevicePage({ params }) {
   const online = isOnline(device.last_seen_at);
   const tools = Array.isArray(device.remote_tools_detected) ? device.remote_tools_detected : [];
   const mesh = device.remote_access_provider === "meshcentral";
-  const remoteOn = mesh ? device.meshcentral_connected === true : device.rustdesk_service_running === true;
+  const remoteOn = remoteSupportConnected(device);
   const contact=contacts[0]?.details||{};
   const remoteAlerts=recentRemoteAccessAlerts(remoteEvents,Date.now(),24*7);
 

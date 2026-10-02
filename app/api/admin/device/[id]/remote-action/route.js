@@ -20,7 +20,7 @@ function baseUrl() {
 
 async function getDevice(id) {
   const response = await fetch(
-    `${baseUrl()}/rest/v1/devices?id=eq.${encodeURIComponent(id)}&select=id,meshcentral_node_id,meshcentral_connected,person_name,device_name&limit=1`,
+    `${baseUrl()}/rest/v1/devices?id=eq.${encodeURIComponent(id)}&select=id,meshcentral_node_id,meshcentral_connected,last_seen_at,person_name,device_name&limit=1`,
     { headers: headers(), cache: "no-store" }
   );
   if (!response.ok) throw new Error(await response.text());
@@ -34,6 +34,7 @@ export async function POST(request, { params }) {
     const { id } = await params;
     const device = await getDevice(id);
     if (!device) return Response.json({ error: "Device not found" }, { status: 404 });
+    if (!device.last_seen_at || Date.now()-Date.parse(device.last_seen_at)>=10*60*1000) return Response.json({ error: "This PC is offline. Wait for WindowsProtect to reconnect before sending a remote action." }, { status: 409 });
     if (!device.meshcentral_connected) return Response.json({ error: "MeshCentral is not connected for this PC" }, { status: 409 });
     if (!device.meshcentral_node_id) return Response.json({ error: "MeshCentral Node ID is still pending" }, { status: 409 });
     if (!meshcentralConfigured()) return Response.json({ error: "MeshCentral dashboard actions are not configured yet" }, { status: 503 });
