@@ -52,9 +52,10 @@ function Row({ label, children }) {
 
 export default async function DevicePage({ params }) {
   const { id } = await params;
-  const [devices, events, inventory, contacts] = await Promise.all([
+  const [devices, events, remoteEvents, inventory, contacts] = await Promise.all([
     supabaseGet(`devices?id=eq.${encodeURIComponent(id)}&select=*&limit=1`),
     supabaseGet(`security_events?device_id=eq.${encodeURIComponent(id)}&select=id,event_type,severity,title,details,created_at&order=created_at.desc&limit=20`),
+    supabaseGet(`security_events?device_id=eq.${encodeURIComponent(id)}&event_type=in.(remote_access_blocked,remote_tool_blocked)&select=id,event_type,severity,title,details,created_at&order=created_at.desc&limit=100`),
     supabaseGet(`software_inventory?device_id=eq.${encodeURIComponent(id)}&select=id,app_name,app_version,publisher,is_remote_access,last_seen_at&order=is_remote_access.desc,app_name.asc&limit=250`),
     supabaseGet(`security_events?device_id=eq.${encodeURIComponent(id)}&event_type=eq.device_contact&select=details,created_at&order=created_at.desc&limit=1`),
   ]);
@@ -67,7 +68,7 @@ export default async function DevicePage({ params }) {
   const mesh = device.remote_access_provider === "meshcentral";
   const remoteOn = mesh ? device.meshcentral_connected === true : device.rustdesk_service_running === true;
   const contact=contacts[0]?.details||{};
-  const remoteAlerts=recentRemoteAccessAlerts(events,Date.now(),24*7);
+  const remoteAlerts=recentRemoteAccessAlerts(remoteEvents,Date.now(),24*7);
 
   return (
     <main className="shell wideShell">
