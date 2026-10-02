@@ -88,7 +88,7 @@ export default function DeviceTable({devices}) {
           <option value="no_sale">No Sale</option><option value="sale">Sale</option>
         </select></td>
         <td>{device.computer_name || "Pending"}</td><td><span className={online?"status online":"status offline"}>{online?"Online":"Offline"}</span></td>
-        <td>{device.security_posture && device.security_posture!=="unknown"?device.security_posture:"Awaiting telemetry"}</td>
+        <td>{device.recent_remote_alert?<span className="health bad">Remote access blocked</span>:(device.security_posture && device.security_posture!=="unknown"?device.security_posture:"Awaiting telemetry")}</td>
         <td><span className={remote?"health good":"health bad"}>{remote?"On":"Off"}</span></td>
         <td className="activationCell">{now?activationLabel(device,now):(device.protection_status==="protected"?"Protected":"Pending")}<small>{device.agent_version || "Version pending"}</small></td>
         <td>{device.last_seen_at?new Date(device.last_seen_at).toISOString().replace("T"," ").slice(0,16)+" UTC":"Never"}</td>

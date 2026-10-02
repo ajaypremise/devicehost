@@ -1,6 +1,7 @@
 import Link from "next/link";
 import SetupCodePanel from "./SetupCodePanel";
 import DeviceTable from "./DeviceTable";
+import { recentRemoteAccessAlerts, remoteAccessTool } from "./lib/security-alerts.js";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ function postureLabel(value) {
 }
 
 function attentionRank(device) {
+  if (device.recent_remote_alert) return 5;
   if (device.security_posture === "critical") return 4;
   if (Array.isArray(device.remote_tools_detected) && device.remote_tools_detected.length > 0) return 3;
   if (device.security_posture === "warning") return 2;
@@ -60,16 +62,18 @@ export default async function Home({ searchParams }) {
 
   let devices = [];
   let events = [];
+  let remoteAlerts = [];
   let error = "";
 
   try {
-    let assignments=[],contacts=[],salesEvents=[];
-    [devices, events, assignments, contacts, salesEvents] = await Promise.all([
+    let assignments=[],contacts=[],salesEvents=[],criticalEvents=[];
+    [devices, events, assignments, contacts, salesEvents, criticalEvents] = await Promise.all([
       supabaseGet("devices?select=*&order=created_at.desc"),
       supabaseGet("security_events?select=id,device_id,event_type,severity,title,details,created_at&order=created_at.desc&limit=12"),
       supabaseGet("security_events?event_type=eq.agent_assignment&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
       supabaseGet("security_events?event_type=eq.device_contact&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
       supabaseGet("security_events?event_type=eq.sales_status&select=device_id,details,created_at&order=created_at.desc&limit=10000"),
+      supabaseGet("security_events?event_type=in.(remote_access_blocked,remote_tool_blocked)&select=id,device_id,event_type,severity,title,details,created_at&order=created_at.desc&limit=100"),
     ]);
     const assigned=new Map();
     for(const event of assignments) if(!assigned.has(event.device_id) && ["Koko","Ashu"].includes(event.details?.agent)) assigned.set(event.device_id,event.details.agent);
@@ -77,7 +81,10 @@ export default async function Home({ searchParams }) {
     for(const event of contacts)if(!contactByDevice.has(event.device_id))contactByDevice.set(event.device_id,event.details||{});
     const salesByDevice=new Map();
     for(const event of salesEvents)if(!salesByDevice.has(event.device_id) && ["sale","no_sale"].includes(event.details?.status))salesByDevice.set(event.device_id,event.details.status);
-    devices=devices.map(device=>({...device,assigned_agent:assigned.get(device.id) || null,customer_email:contactByDevice.get(device.id)?.email||null,customer_phone:contactByDevice.get(device.id)?.phone||null,sales_status:salesByDevice.get(device.id)||"no_sale"}));
+    remoteAlerts=recentRemoteAccessAlerts(criticalEvents);
+    const alertByDevice=new Map();
+    for(const alert of remoteAlerts)if(!alertByDevice.has(alert.device_id))alertByDevice.set(alert.device_id,alert);
+    devices=devices.map(device=>({...device,assigned_agent:assigned.get(device.id) || null,customer_email:contactByDevice.get(device.id)?.email||null,customer_phone:contactByDevice.get(device.id)?.phone||null,sales_status:salesByDevice.get(device.id)||"no_sale",recent_remote_alert:alertByDevice.get(device.id)||null}));
   } catch (err) {
     error = err instanceof Error ? err.message : "Unable to load dashboard.";
   }
@@ -144,6 +151,17 @@ export default async function Home({ searchParams }) {
 
       {error ? <div className="errorBox">{error}</div> : null}
 
+      {remoteAlerts.length ? (
+        <section className="securityAlert" role="alert" aria-live="assertive">
+          <div className="securityAlertIcon">!</div>
+          <div>
+            <strong>{remoteAlerts.length} unauthorized remote-access attempt{remoteAlerts.length === 1 ? "" : "s"} blocked in the last 24 hours</strong>
+            <p>{devices.find(device => device.id === remoteAlerts[0].device_id)?.person_name || "Device"} · {remoteAccessTool(remoteAlerts[0])} · {timeAgo(remoteAlerts[0].created_at)}</p>
+          </div>
+          <Link href={`/device/${remoteAlerts[0].device_id}`}>Review latest</Link>
+        </section>
+      ) : null}
+
       <section className="section">
         <div className="sectionHeading deviceHeading">
           <div>
@@ -196,7 +214,7 @@ export default async function Home({ searchParams }) {
           </div>
         ) : (
           <>
-            <DeviceTable devices={pageDevices.map(d => ({id:d.id ?? null,person_name:d.person_name ?? null,customer_email:d.customer_email ?? null,customer_phone:d.customer_phone ?? null,device_name:d.device_name ?? null,device_code:d.device_code ?? null,computer_name:d.computer_name ?? null,assigned_agent:d.assigned_agent ?? null,sales_status:d.sales_status ?? "no_sale",last_seen_at:d.last_seen_at ?? null,security_posture:d.security_posture ?? null,remote_access_provider:d.remote_access_provider ?? null,meshcentral_connected:d.meshcentral_connected ?? null,rustdesk_service_running:d.rustdesk_service_running ?? null,protection_status:d.protection_status ?? null,migration_status:d.migration_status ?? null,agent_version:d.agent_version ?? null}))} />
+            <DeviceTable devices={pageDevices.map(d => ({id:d.id ?? null,person_name:d.person_name ?? null,customer_email:d.customer_email ?? null,customer_phone:d.customer_phone ?? null,device_name:d.device_name ?? null,device_code:d.device_code ?? null,computer_name:d.computer_name ?? null,assigned_agent:d.assigned_agent ?? null,sales_status:d.sales_status ?? "no_sale",last_seen_at:d.last_seen_at ?? null,security_posture:d.security_posture ?? null,recent_remote_alert:d.recent_remote_alert ?? null,remote_access_provider:d.remote_access_provider ?? null,meshcentral_connected:d.meshcentral_connected ?? null,rustdesk_service_running:d.rustdesk_service_running ?? null,protection_status:d.protection_status ?? null,migration_status:d.migration_status ?? null,agent_version:d.agent_version ?? null}))} />
 
             <div className="tableFooter">
               <span>Showing {filtered.length ? start + 1 : 0}-{Math.min(start + size, filtered.length)} of {filtered.length}</span>

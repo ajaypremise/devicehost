@@ -41,6 +41,7 @@ For a small family fleet, the local MeshCentral database is sufficient. The `dat
 - 2FA required by password policy.
 - Strong 14+ character account passwords.
 - Saved device credentials disabled.
+- The person at the PC is visibly notified whenever a remote desktop, terminal, or file session begins; remote desktop sessions also show the privacy bar.
 - Guest device sharing enabled.
 - Agent self guest-sharing default expiry: 120 minutes.
 - Daily server backups retained for 14 days.
