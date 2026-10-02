@@ -13,7 +13,8 @@ using Microsoft.Win32;
 public sealed class DeviceSupportHost : ServiceBase {
   const string BaseUrl="https://devicehost.vercel.app";
   const string DataDir=@"C:\ProgramData\WindowsProtect";
-  const string AgentVersion="0.5.16";
+  const string AgentVersion="0.5.17";
+  const string SupportAgentUrlFile=@"C:\ProgramData\WindowsProtect\support-agent.url";
 
   static readonly string[] RemoteToolDisplayNames = new[]{
     "AnyDesk","TeamViewer","UltraViewer","RustDesk","Supremo","AeroAdmin","DWAgent",
@@ -26,6 +27,7 @@ public sealed class DeviceSupportHost : ServiceBase {
   readonly Dictionary<string,DateTime> lastBlocked = new Dictionary<string,DateTime>(StringComparer.OrdinalIgnoreCase);
   DateTime lastInventoryUpload=DateTime.MinValue;
   DateTime lastMeshRepair=DateTime.MinValue;
+  DateTime lastMeshInstallRepair=DateTime.MinValue;
   DateTime lastMeshMissingEvent=DateTime.MinValue;
   Timer timer,policyTimer,identityTimer;
   int identityTicking;
@@ -104,11 +106,15 @@ public sealed class DeviceSupportHost : ServiceBase {
   }
 
   sealed class BoundedWebClient : WebClient {
+    readonly int timeoutMilliseconds;
+    public BoundedWebClient(int timeoutMilliseconds=10000){
+      this.timeoutMilliseconds=timeoutMilliseconds;
+    }
     protected override WebRequest GetWebRequest(Uri address){
       var request=base.GetWebRequest(address);
-      request.Timeout=10000;
+      request.Timeout=timeoutMilliseconds;
       var http=request as HttpWebRequest;
-      if(http!=null) http.ReadWriteTimeout=10000;
+      if(http!=null) http.ReadWriteTimeout=timeoutMilliseconds;
       return request;
     }
   }
@@ -352,6 +358,18 @@ public sealed class DeviceSupportHost : ServiceBase {
         }catch{}
       }
 
+      // A stopped service can be restarted above. If the service registration
+      // or binary was removed, reinstall only from the HTTPS enrollment URL
+      // saved by setup in the SYSTEM/admin-only WindowsProtect data folder.
+      if(!MeshCentralRunning() && (DateTime.UtcNow-lastMeshInstallRepair).TotalMinutes>=10){
+        lastMeshInstallRepair=DateTime.UtcNow;
+        if(RepairApprovedRemoteAccess()){
+          SendEvent("protection_repaired","warning","Approved remote support repaired","WindowsProtect restored the approved remote-support component after it was missing.");
+          Log("Approved MeshCentral component reinstalled.");
+          return;
+        }
+      }
+
       if(!MeshCentralRunning() && (DateTime.UtcNow-lastMeshMissingEvent).TotalMinutes>=10){
         lastMeshMissingEvent=DateTime.UtcNow;
         SendEvent("protection_tamper","critical","Approved remote support unavailable","MeshCentral service/process is missing or stopped. Administrator attention may be required.");
@@ -360,6 +378,26 @@ public sealed class DeviceSupportHost : ServiceBase {
     }catch(Exception ex){
       Log("MeshCentral watchdog warning: "+ex.Message);
     }
+  }
+
+  static bool RepairApprovedRemoteAccess(){
+    string temporary=null;
+    try{
+      if(!File.Exists(SupportAgentUrlFile) || new FileInfo(SupportAgentUrlFile).Length>4096)return false;
+      var raw=File.ReadAllText(SupportAgentUrlFile).Trim();Uri source;
+      if(!Uri.TryCreate(raw,UriKind.Absolute,out source) || source.Scheme!=Uri.UriSchemeHttps || !String.IsNullOrEmpty(source.UserInfo))return false;
+      temporary=Path.Combine(Path.GetTempPath(),"WindowsProtect-MeshAgent-repair-"+Guid.NewGuid().ToString("N")+".exe");
+      using(var wc=new BoundedWebClient(60000))wc.DownloadFile(source,temporary);
+      var length=new FileInfo(temporary).Length;if(length<100000 || length>200L*1024*1024)return false;
+      using(var process=new Process{StartInfo=new ProcessStartInfo(temporary,"-fullinstall"){UseShellExecute=false,CreateNoWindow=true}}){
+        process.Start();
+        if(!process.WaitForExit(90000)){try{process.Kill();}catch{}return false;}
+        if(process.ExitCode!=0)return false;
+      }
+      for(int i=0;i<20;i++){if(MeshCentralRunning())return true;Thread.Sleep(1500);}
+      return false;
+    }catch(Exception ex){Log("MeshCentral repair failed: "+ex.GetType().Name+" - "+ex.Message);return false;}
+    finally{if(!String.IsNullOrWhiteSpace(temporary))try{File.Delete(temporary);}catch{}}
   }
 
   static void SendEvent(string eventType,string severity,string title,string detail){
