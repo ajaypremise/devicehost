@@ -13,6 +13,27 @@ internal static class WindowsProtectUpdate {
   static readonly string Request=Path.Combine(Data,"agent-update.txt"),Backup=Path.Combine(Data,"DeviceSupportHost.previous.exe");
   static string Sha(string path){using(var stream=File.OpenRead(path))using(var hash=SHA256.Create())return BitConverter.ToString(hash.ComputeHash(stream)).Replace("-","").ToLowerInvariant();}
   static void Log(string value){try{File.AppendAllText(Path.Combine(Data,"update.log"),DateTime.UtcNow.ToString("o")+" "+value+Environment.NewLine);}catch{}}
+  static void WaitForServiceImageRelease(){
+    for(var attempt=0;attempt<90;attempt++){
+      var running=false;
+      foreach(var process in Process.GetProcessesByName("DeviceSupportHost"))using(process){try{if(!process.HasExited)running=true;}catch{running=true;}}
+      if(!running){
+        try{using(var stream=new FileStream(Target,FileMode.Open,FileAccess.ReadWrite,FileShare.None)){}return;}
+        catch(IOException){}catch(UnauthorizedAccessException){}
+      }
+      Thread.Sleep(500);
+    }
+    throw new IOException("Windows did not release the stopped service file within 45 seconds.");
+  }
+  static void ReplaceTarget(string source){
+    Exception last=null;
+    for(var attempt=0;attempt<30;attempt++){
+      try{File.Copy(source,Target,true);return;}
+      catch(IOException ex){last=ex;}catch(UnauthorizedAccessException ex){last=ex;}
+      Thread.Sleep(500);
+    }
+    throw new IOException("Windows did not allow the service file to be replaced.",last);
+  }
   static int Main(){
     string staged="";
     try{
@@ -23,13 +44,13 @@ internal static class WindowsProtectUpdate {
       var length=new FileInfo(staged).Length;if(length<10240 || length>20*1024*1024 || !Sha(staged).Equals(lines[1],StringComparison.OrdinalIgnoreCase))throw new IOException("Update verification failed.");
       using(var service=new ServiceController(ServiceName)){
         if(service.Status!=ServiceControllerStatus.Stopped){service.Stop();service.WaitForStatus(ServiceControllerStatus.Stopped,TimeSpan.FromSeconds(45));}
-        File.Copy(Target,Backup,true);File.Copy(staged,Target,true);
+        WaitForServiceImageRelease();File.Copy(Target,Backup,true);ReplaceTarget(staged);
         service.Start();service.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(30));
       }
       File.Delete(Backup);File.Delete(staged);File.Delete(Request);Log("Update installed successfully: "+lines[0]);return 0;
     }catch(Exception ex){
       Log("Update failed: "+ex.GetType().Name+" - "+ex.Message);
-      try{if(File.Exists(Backup)){File.Copy(Backup,Target,true);using(var service=new ServiceController(ServiceName)){if(service.Status==ServiceControllerStatus.Stopped)service.Start();}}}catch{}
+      try{if(File.Exists(Backup)){WaitForServiceImageRelease();ReplaceTarget(Backup);using(var service=new ServiceController(ServiceName)){if(service.Status==ServiceControllerStatus.Stopped)service.Start();}}}catch{}
       try{if(File.Exists(Backup))File.Delete(Backup);}catch{}try{if(staged.Length>0&&File.Exists(staged))File.Delete(staged);}catch{}try{if(File.Exists(Request))File.Delete(Request);}catch{}return 1;
     }
   }
